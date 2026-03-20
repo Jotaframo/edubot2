@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import numpy as np
 from rclpy.node import Node
-from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent
+from Inverse_Kinematics_Numerical import ik_coordinate_descent
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
@@ -239,7 +239,7 @@ class RectangleTraj(Node):
 
         self._last_q = self._HOME.copy()
         self._beginning = self.get_clock().now()
-        self._cycle_time = 10.0
+        self._cycle_time = 20.0
         self._last_cycle_t = None
 
         self._publisher = self.create_publisher(JointTrajectory, 'joint_cmds', 10)
@@ -250,7 +250,7 @@ class RectangleTraj(Node):
         self._max_trace_points = 3000
 
 
-        timer_period = 0.02  # 25 Hz
+        timer_period = 0.2  # 25 Hz
         self._timer = self.create_timer(timer_period, self.timer_callback)
         
         self.get_logger().info("Starting Horizontal Rectangle Trajectory...")
@@ -392,6 +392,7 @@ class RectangleTraj(Node):
 def main(args=None):
     rclpy.init(args=args)
     rectangle_traj = RectangleTraj()
+    tudelft_sil= SilhouetteTraj()
 
     
     try:

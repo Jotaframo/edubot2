@@ -6,7 +6,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from python_controllers.Forward_Kinematics import jacobian_finite_difference
+from Forward_Kinematics import jacobian_finite_difference
 
 
 JOINT_NAMES = [
