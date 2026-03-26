@@ -6,7 +6,10 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from Forward_Kinematics import jacobian_finite_difference
+try:
+    from python_controllers.Jacobian_FINAL import jacobian_finite_difference_final
+except ModuleNotFoundError:
+    from Jacobian_FINAL import jacobian_finite_difference_final
 
 
 JOINT_NAMES = [
@@ -173,7 +176,7 @@ class ConstantVelocityFollower(Node):
             return
 
         q = self._effective_q()
-        jac = jacobian_finite_difference(q)
+        jac = jacobian_finite_difference_final(q)
         singular_values = np.linalg.svd(jac, compute_uv=False)
         sigma_min = float(np.min(singular_values))
         rank = int(np.sum(singular_values > self.min_sigma))
