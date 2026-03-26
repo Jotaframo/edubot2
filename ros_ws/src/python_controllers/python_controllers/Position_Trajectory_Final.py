@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from rclpy.node import Node
 from Inverse_Kinematics_Numerical import ik_coordinate_descent
+from Forward_Kinematics_FINAL import forward_kinematics_full
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
@@ -138,7 +139,7 @@ class SilhouetteTraj(Node):
     
     def _init_trace_marker(self):
         self._trace_marker = Marker()
-        self._trace_marker.header.frame_id = "world" 
+        self._trace_marker.header.frame_id = "world"
         self._trace_marker.ns = "silhouette_trace"
         self._trace_marker.id = 0
         self._trace_marker.type = Marker.LINE_STRIP
@@ -148,12 +149,16 @@ class SilhouetteTraj(Node):
         self._trace_marker.color.g = 1.0
         self._trace_marker.color.b = 0.0
         self._trace_marker.color.a = 1.0
-        self._trace_marker.pose.orientation.w = 1.0
+        self._trace_marker.pose.orientation.w = -1.0
+
+    @staticmethod
+    def _world_to_base_coords(x, y, z):
+        return -float(x), -float(y), float(z)
 
     def _publish_trace_point(self, x, y, z, stamp):
         point = Point()
         point.x = float(x)
-        point.y = float(y)
+        point.y = -float(y)
         point.z = float(z)
 
         self._trace_marker.points.append(point)
@@ -222,7 +227,9 @@ class SilhouetteTraj(Node):
         
         msg.points = [point]
         self._publisher.publish(msg)
-        self._publish_trace_point(target_x, target_y, target_z, now)
+        fk = forward_kinematics_full(*self._last_q)
+        ee_x, ee_y, ee_z = self._world_to_base_coords(fk[0, 3], fk[1, 3], fk[2, 3])
+        self._publish_trace_point(ee_x, ee_y, ee_z, now)
 
 
 class RectangleTraj(Node):
@@ -295,8 +302,7 @@ class RectangleTraj(Node):
     def _init_trace_marker(self):
         """Sets up the visual properties of the trace line."""
         self._trace_marker = Marker()
-        # Change "world" if your robot's base frame is named something else (like "base_link")
-        self._trace_marker.header.frame_id = "world" 
+        self._trace_marker.header.frame_id = "world"
         self._trace_marker.ns = "rectangle_trace"
         self._trace_marker.id = 0
         self._trace_marker.type = Marker.LINE_STRIP
@@ -312,10 +318,14 @@ class RectangleTraj(Node):
         self._trace_marker.color.a = 1.0
         self._trace_marker.pose.orientation.w = 1.0
 
+    @staticmethod
+    def _world_to_base_coords(x, y, z):
+        return -float(x), -float(y), float(z)
+
     def _publish_trace_point(self, x, y, z, stamp):
         point = Point()
         point.x = float(x)
-        point.y = float(y)
+        point.y = -float(y)
         point.z = float(z)
 
         self._trace_marker.points.append(point)
@@ -382,7 +392,9 @@ class RectangleTraj(Node):
         
         msg.points = [point]
         self._publisher.publish(msg)
-        self._publish_trace_point(target_x, target_y, target_z, now)
+        fk = forward_kinematics_full(*self._last_q)
+        ee_x, ee_y, ee_z = self._world_to_base_coords(fk[0, 3], fk[1, 3], fk[2, 3])
+        self._publish_trace_point(ee_x, ee_y, ee_z, now)
 
 
 
@@ -391,17 +403,18 @@ class RectangleTraj(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    rectangle_traj = RectangleTraj()
+    solution_trajrectangle_traj = RectangleTraj()
     tudelft_sil= SilhouetteTraj()
+    solution_traj = SilhouetteTraj()
 
     
     try:
         #rclpy.spin(rectangle_traj)
-        rclpy.spin(rectangle_traj)
+        rclpy.spin(solution_traj)
     except KeyboardInterrupt:
         pass
     finally:
-        rectangle_traj.destroy_node()
+        solution_traj.destroy_node()
         rclpy.shutdown()
 
 

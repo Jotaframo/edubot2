@@ -68,7 +68,6 @@ def _build_result(q, target_frame, iterations, pos_tol, rot_tol, scipy_result=No
         "pos_error_raw": pos_error,
         "rot_error": round(rot_error, 4),
         "rot_error_raw": rot_error,
-        "error": round(total_error, 4),
         "error_raw": total_error,
         "iters": int(iterations),
     }
@@ -244,7 +243,6 @@ if __name__ == "__main__":
             print(
                 f"    Pos Error: {res['pos_error']:.4f}, "
                 f"Rot Error: {res['rot_error']:.4f}, "
-                f"Total Error: {res['error']:.4f}"
             )
             print(f"    Joint angles (rad): {res['q']}")
             print(f"    Iterations: {res['iters']}")
