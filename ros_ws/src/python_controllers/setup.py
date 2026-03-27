@@ -22,6 +22,11 @@ setup(
         'console_scripts': [
             'example_pos_traj = python_controllers.example_pos_traj:main',
             'example_vel_traj = python_controllers.example_vel_traj:main',
+            'pick_and_place = python_controllers.pick_place_open_loop:main',
+            'constant_velocity = python_controllers.constant_velocity_follower:main',
+            'constant_velocity_upward = python_controllers.constant_velocity_upward:main',
+            'position_trajectory_follower = python_controllers.Position_Trajectory_Final:main',
+            'pick_place_ez = python_controllers.pick_and_place_ez:main',
         ],
     },
 )
