@@ -26,7 +26,7 @@ class PhysicalPickPlaceTuning:
     home_q: tuple[float, float, float, float, float] = (0.4, 0.9, -0.8, -1.0, 0.0)
     fixed_world_rpy: tuple[float, float, float] = (3.14, 0.0, 0.0)
     use_cartesian_offset: bool = True
-    x_offset_m: float = 0.10
+    x_offset_m: float = 0.20
 
     # Encoder-tuned gripper commands
     gripper_open: float = 0.8
@@ -87,7 +87,8 @@ class PickPlaceOpenLoop(Node):
         self.pub = self.create_publisher(JointTrajectory, "/joint_cmds", 10)
         self.current_q = self.home_q.copy()
         self.current_gripper = self.gripper_open
-        
+        self.done = False
+        self.stages = PickPlaceOpenLoop._build_stage_sequence(self)
         self.stage_idx = 0
         self.stage_active = False
         self.timer = self.create_timer(0.05, self._tick)
@@ -101,7 +102,28 @@ class PickPlaceOpenLoop(Node):
         )
         return np.array(res["q_raw"])
 
+    def _build_stage_sequence(self):
+        a_hov = (self.location_a[0], self.location_a[1], self.hover_z_m)
+        a_pk = (self.location_a[0], self.location_a[1], self.pick_z_m)
+        a_tr = (self.location_a[0], self.location_a[1], self.travel_z_m)
+        b_pk = (self.location_b[0], self.location_b[1], self.pick_z_m)
+        b_tr = (self.location_b[0], self.location_b[1], self.travel_z_m)
+
+        return [
+            Stage("initial_approach", xyz=a_hov, gripper=self.gripper_open, move_time=self.initial_approach_move_time_s, straight_line=True),
+            Stage("descend_a", xyz=a_pk, gripper=self.gripper_open, move_time=self.descend_move_time_s, straight_line=True),
+            Stage("grasp_a", xyz=a_pk, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, straight_line=False),
+            Stage("lift_a", xyz=a_tr, gripper=self.gripper_closed, move_time=self.lift_move_time_s, straight_line=True),
+            Stage("travel_to_b", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s, straight_line=True),
+            Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s, straight_line=True),
+            Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, straight_line=False),
+            Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s, straight_line=True),
+        ]
+
     def _tick(self):
+        if self.done:
+            return
+
         if self.stage_idx >= len(self.stages): return
 
         stage = self.stages[self.stage_idx]
@@ -146,3 +168,18 @@ class PickPlaceOpenLoop(Node):
             self.current_gripper = cmd_gripper
             self.stage_idx += 1
             self.stage_active = False
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = PickPlaceOpenLoop()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

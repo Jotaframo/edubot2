@@ -5,7 +5,7 @@ package_name = 'python_controllers'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=find_packages(include=[package_name], exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -23,6 +23,8 @@ setup(
             'example_pos_traj = python_controllers.example_pos_traj:main',
             'example_vel_traj = python_controllers.example_vel_traj:main',
             'constant_velocity_follower = python_controllers.constant_velocity_follower:main',
+            'pick_place_open_loop = python_controllers.pick_place_open_loop:main',
+            'block_stacking_open_loop = python_controllers.block_stacking_open_loop:main',
         ],
     },
 )
