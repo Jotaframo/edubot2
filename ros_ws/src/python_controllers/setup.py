@@ -5,7 +5,7 @@ package_name = 'python_controllers'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=find_packages(include=[package_name], exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -25,8 +25,11 @@ setup(
             'pick_and_place = python_controllers.pick_place_open_loop:main',
             'constant_velocity = python_controllers.constant_velocity_follower:main',
             'constant_velocity_upward = python_controllers.constant_velocity_upward:main',
+            'constant_velocity_follower = python_controllers.constant_velocity_follower:main',
+            'pick_place_open_loop = python_controllers.pick_place_open_loop:main',
             'position_trajectory_follower = python_controllers.Position_Trajectory_Final:main',
             'pick_place_ez = python_controllers.pick_and_place_ez:main',
+            'block_stacking_open_loop = python_controllers.block_stacking_open_loop:main',
         ],
     },
 )
