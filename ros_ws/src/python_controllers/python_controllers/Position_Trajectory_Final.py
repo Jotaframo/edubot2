@@ -405,7 +405,7 @@ def main(args=None):
     rclpy.init(args=args)
     solution_trajrectangle_traj = RectangleTraj()
     tudelft_sil= SilhouetteTraj()
-    solution_traj = SilhouetteTraj()
+    solution_traj = tudelft_sil
 
     
     try:

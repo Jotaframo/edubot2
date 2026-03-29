@@ -55,8 +55,8 @@ def _residual_vector(
 
 
 def _build_result(q, target_frame, iterations, pos_tol, rot_tol, scipy_result=None):
-    q = np.clip(np.asarray(q, dtype=float), BOUNDS_MIN, BOUNDS_MAX)
-    fk = forward_kinematics_full(*q)
+    q = np.clip(np.asarray(q, dtype=float), BOUNDS_MIN, BOUNDS_MAX) #Ensure there is no rotation outside of bounds
+    fk = forward_kinematics_full(*q) 
     pos_error, rot_error, total_error = calculate_errors(fk, target_frame)
     success = bool(pos_error <= pos_tol and rot_error <= rot_tol)
 
@@ -103,9 +103,6 @@ def ik_coordinate_descent(
     q0 = np.zeros(5, dtype=float) if q_init is None else np.asarray(q_init, dtype=float)
     q0 = np.clip(q0, BOUNDS_MIN, BOUNDS_MAX)
 
-    # Match ikpy more closely by relying on scipy's default least-squares
-    # termination criteria. The public tolerance arguments are kept for
-    # feasibility checks, not optimizer early-stop control.
     kwargs = {}
     if max_iters is not None:
         kwargs["max_nfev"] = max_iters
@@ -238,7 +235,7 @@ if __name__ == "__main__":
         print(f"  Found {len(valid_results)} feasible solution(s) out of {len(res_list)} candidate(s)")
         
         for idx, res in enumerate(res_list, start=1):
-            status = "FEASIBLE" if res["success"] else "approximate only"
+            status = "FEASIBLE" if res["success"] else "INFEASIBLE"
             print(f"  Solution {idx} [{status}]")
             print(
                 f"    Pos Error: {res['pos_error']:.4f}, "
