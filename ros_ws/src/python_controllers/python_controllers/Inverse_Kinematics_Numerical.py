@@ -53,7 +53,7 @@ def _residual_vector(
 
     return residual
 
-
+# Building a structured dictionary from relevant results
 def _build_result(q, target_frame, iterations, pos_tol, rot_tol, scipy_result=None):
     q = np.clip(np.asarray(q, dtype=float), BOUNDS_MIN, BOUNDS_MAX) #Ensure there is no rotation outside of bounds
     fk = forward_kinematics_full(*q) 
@@ -95,10 +95,6 @@ def ik_coordinate_descent(
     regularization_parameter=None,
     optimize_orientation=True,
 ):
-    """
-    Legacy public entry point kept in place, but now backed by least-squares
-    optimization similar to ikpy's inverse kinematics optimizer.
-    """
     target_frame = create_tf_matrix(x, y, z, rot_x, rot_y, rot_z)
     q0 = np.zeros(5, dtype=float) if q_init is None else np.asarray(q_init, dtype=float)
     q0 = np.clip(q0, BOUNDS_MIN, BOUNDS_MAX)
@@ -107,6 +103,7 @@ def ik_coordinate_descent(
     if max_iters is not None:
         kwargs["max_nfev"] = max_iters
 
+    # Apply least-squares optimization to find bounded joint angles, under a given amount of maximum iterations
     result = least_squares(
         lambda q: _residual_vector(
             q,
