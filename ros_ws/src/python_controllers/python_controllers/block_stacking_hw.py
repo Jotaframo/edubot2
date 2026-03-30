@@ -1,4 +1,3 @@
-import numpy as np
 import rclpy
 from python_controllers.pick_place_open_loop import PickPlaceOpenLoop, Stage
 
@@ -6,7 +5,7 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
     def __init__(self):
         super().__init__()
         self.declare_parameter("stack_count", 3)
-        self.declare_parameter("stack_height_step", 0.025)
+        self.declare_parameter("stack_height_step", 0.022)
 
         self.stack_count = int(self.get_parameter("stack_count").value)
         self.stack_height_step = float(self.get_parameter("stack_height_step").value)
@@ -41,7 +40,7 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
             Stage("descend_a", xyz=a_pk, gripper=self.gripper_open, move_time=self.descend_move_time_s),
             Stage("grasp_a", xyz=a_pk, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
             Stage("lift_a", xyz=a_tr, gripper=self.gripper_closed, move_time=self.lift_move_time_s),
-            Stage("travel_to_b", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s),
+            Stage("rotate_about_joint1", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s),
             Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s),
             Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
             Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
