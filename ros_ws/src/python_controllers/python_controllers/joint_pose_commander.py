@@ -5,7 +5,7 @@ from builtin_interfaces.msg import Duration
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
-POSE_TABLE = [
+POSES = [
     ("I", [-0.9205, 0.6447, -0.8765, 0.2326, 1.5708]),
     ("II", [-1.3034, -0.1819, 0.4459, 1.3068, -0.2666]),
     ("III", [-0.0008, 0.9390, -0.1535, 1.5700, 1.5708]),
@@ -55,7 +55,7 @@ class JointTableCommander(Node):
         self.pose_start = self.get_clock().now()
 
         self.get_logger().info(
-            f"Publishing {len(POSE_TABLE)} joint poses to {self.topic} "
+            f"Publishing {len(POSES)} joint poses to {self.topic} "
             f"(mode={self.mode}, hold_s={self.hold_s}, loop={self.loop}, gripper={self.gripper})"
         )
 
@@ -87,7 +87,7 @@ class JointTableCommander(Node):
             )
             return
 
-        if self.pose_index >= len(POSE_TABLE):
+        if self.pose_index >= len(POSES):
             if self.loop:
                 self.pose_index = 0
                 self.pose_start = self.get_clock().now()
@@ -96,7 +96,7 @@ class JointTableCommander(Node):
                 self.timer.cancel()
                 return
 
-        pose_name, pose_joints = POSE_TABLE[self.pose_index]
+        pose_name, pose_joints = POSES[self.pose_index]
         self._publish_pose(pose_joints)
 
         elapsed = (self.get_clock().now() - self.pose_start).nanoseconds * 1e-9
