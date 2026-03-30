@@ -32,6 +32,7 @@ setup(
             'pick_place_ez = python_controllers.pick_and_place_ez:main',
             'block_stacking_open_loop = python_controllers.block_stacking_open_loop:main',
             'block_stacking_hw = python_controllers.block_stacking_hw:main',
+            'joint_pose_commander = python_controllers.joint_pose_commander:main',
         ],
     },
 )
