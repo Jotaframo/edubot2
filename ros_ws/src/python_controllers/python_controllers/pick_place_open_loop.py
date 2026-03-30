@@ -21,20 +21,20 @@ class Stage:
 @dataclass(frozen=True)
 class PhysicalPickPlaceTuning:
     # Encoder-tuned robot pose which will define location of the pick
-    start_q: tuple[float, float, float, float, float] = (0.4, 0.9, -0.8, -1.0, 0.0)
+    start_q: tuple[float, float, float, float, float] = (0.822, -0.3283, -0.4218, -1.1919, -1.0446)
     # Common sense value since the gripper should point downwards this oritenatoin of
     # the EE should be fixed wrt to the world fram for the entire movement
-    fixed_world_rpy: tuple[float, float, float] = (3.14, 0.0, 0.0)
-    x_offset_m: float = 0.20
+    fixed_world_rpy: tuple[float, float, float] = (3.1415, 0.0, 0.0)
+    x_offset_m: float = 0.10
 
     # Tuned values to ensure robot is gripping hard enough
-    gripper_open: float = 0.8
-    gripper_closed: float = 0.1
+    gripper_open: float = 0.5
+    gripper_closed: float = 0.25
 
     # Values to be changed depending on the block that is picked
-    pick_z_m: float = 0.03
-    hover_z_m: float = 0.10
-    travel_z_m: float = 0.12
+    pick_z_m: float = 0.0037
+    hover_z_m: float = 0.09
+    travel_z_m: float = 0.07
 
     # Motion timing for the physical robot
     initial_approach_move_time_s: float = 3.0
@@ -58,7 +58,7 @@ class PickPlaceOpenLoop(Node):
 
         self.tuning = PHYSICAL_TUNING
 
-        self.start_q = self.tuning.start_q
+        self.start_q = np.array(self.tuning.start_q, dtype=float)
         self.locked_rpy = self.tuning.fixed_world_rpy
         
         self.gripper_open = self.tuning.gripper_open
@@ -160,7 +160,8 @@ class PickPlaceOpenLoop(Node):
         msg.points = [pt]
         self.pub.publish(msg)
 
-        if elapsed >= stage.move_time + stage.hold_s:
+        hold_s = stage.hold_s if stage.hold_s is not None else 0.0
+        if elapsed >= stage.move_time + hold_s:
             self.current_q = q_cmd # Ensure continuity for next stage start
             self.current_gripper = cmd_gripper
             self.stage_idx += 1
