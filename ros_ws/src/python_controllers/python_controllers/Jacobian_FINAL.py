@@ -54,29 +54,41 @@ def jacobian_svd_and_rank_final(q, eps=1e-6, rank_tol=1e-6, q5=0.0):
 
 def analyze_assignment_pose_jacobians_final(eps=1e-6, rank_tol=1e-6, q5=0.0):
     """
-    Keep the same assignment-pose evaluation workflow as Forward_Kinematics.py,
-    but evaluate Jacobians using the final FK chain.
+    Evaluate Jacobians at assignment poses using numerical IK.
+    Uses the final FK chain for all computations.
     """
     try:
-        from python_controllers.Inverse_Kinematics_Closed_Form import analytical_ik_closed_form
+        from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
     except ModuleNotFoundError:
-        from Inverse_Kinematics_Closed_Form import analytical_ik_closed_form
+        from Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
 
-    l2, l3, l4 = 0.11167, 0.16000, 0.15000
+    # Assignment poses from AE4324: [x, y, z, rot_x, rot_y, rot_z]
     assignment_poses = [
-        ("I", [0.2, 0.2, 0.2, 1.57, 0.0]),
-        ("II", [0.2, 0.1, 0.4, 0.0, 1.57]),
-        ("III", [0.0, 0.0, 0.45, 0.785, 0.785]),
-        ("IV", [0.0, 0.0, 0.07, 3.141, 0.0]),
-        ("V", [0.0, 0.0452, 0.45, 0.785, 3.141]),
+        ("I", [0.2, 0.2, 0.2, 0.0, 1.57, 0.65]),
+        ("II", [0.2, 0.1, 0.4, 0.0, 0.0, -1.57]),
+        ("III", [0.0, 0.0, 0.4, 0.0, -0.785, 1.57]),
+        ("IV", [0.0, 0.0, 0.07, 3.141, 0.0, 0.0]),
+        ("V", [0.0, 0.0452, 0.45, -0.785, 0.0, 3.141]),
     ]
 
     results = []
     for label, pose in assignment_poses:
-        x, y, z, pitch, roll = pose
-        out = analytical_ik_closed_form(x, y, z, pitch, l2, l3, l4, track_invalid=True)
-        valid_solutions = out["valid_solutions"]
-        invalid_solutions = [q for q in out["invalid_solutions"] if q is not None]
+        x, y, z, rot_x, rot_y, rot_z = pose
+        
+        # Use numerical multi-start IK with 15 random initial guesses
+        ik_solutions = ik_coordinate_descent_multi_start(
+            x, y, z, rot_x, rot_y, rot_z,
+            num_random=15,
+            seed=42,
+            unique_decimals=3,
+            max_iters=5000,
+            pos_tol=5e-3,
+            rot_tol=np.deg2rad(1.0),
+        )
+        
+        valid_solutions = [sol for sol in ik_solutions if sol["success"]]
+        invalid_solutions = [sol for sol in ik_solutions if not sol["success"]]
+        
         pose_result = {
             "label": label,
             "pose": pose,
@@ -85,29 +97,39 @@ def analyze_assignment_pose_jacobians_final(eps=1e-6, rank_tol=1e-6, q5=0.0):
             "solutions": [],
         }
 
-        for i, q_sol in enumerate(valid_solutions):
+        # Analyze valid solutions
+        for i, ik_result in enumerate(valid_solutions):
+            q_sol = ik_result["q_raw"][:4]  # Use first 4 DOFs for Jacobian
             analysis = jacobian_svd_and_rank_final(q_sol, eps=eps, rank_tol=rank_tol, q5=q5)
             pose_result["solutions"].append(
                 {
                     "index": i,
                     "valid": True,
-                    "q": analysis["q"],
+                    "q": ik_result["q"][:4],
+                    "q_raw": q_sol,
                     "rank": analysis["rank"],
                     "singular_values": analysis["singular_values"],
                     "jacobian": analysis["jacobian"],
+                    "pos_error": ik_result["pos_error"],
+                    "rot_error": ik_result["rot_error"],
                 }
             )
 
-        for i, q_sol in enumerate(invalid_solutions):
+        # Analyze invalid solutions (best approximations)
+        for i, ik_result in enumerate(invalid_solutions):
+            q_sol = ik_result["q_raw"][:4]
             analysis = jacobian_svd_and_rank_final(q_sol, eps=eps, rank_tol=rank_tol, q5=q5)
             pose_result["solutions"].append(
                 {
                     "index": len(valid_solutions) + i,
                     "valid": False,
-                    "q": analysis["q"],
+                    "q": ik_result["q"][:4],
+                    "q_raw": q_sol,
                     "rank": analysis["rank"],
                     "singular_values": analysis["singular_values"],
                     "jacobian": analysis["jacobian"],
+                    "pos_error": ik_result["pos_error"],
+                    "rot_error": ik_result["rot_error"],
                 }
             )
         results.append(pose_result)
@@ -122,17 +144,27 @@ def print_assignment_pose_jacobian_analysis_final(eps=1e-6, rank_tol=1e-6, q5=0.
     for pose_result in results:
         label = pose_result["label"]
         pose = pose_result["pose"]
+        num_valid = pose_result["num_valid_solutions"]
+        num_invalid = pose_result["num_invalid_solutions"]
+        
         print(f"{label}. pose={pose}")
+        print(f"   Found {num_valid} valid solution(s) and {num_invalid} approximate solution(s)")
+        
         if not pose_result["solutions"]:
-            print("  no analytic IK branches available")
+            print("   No solutions found")
             continue
+            
         for sol in pose_result["solutions"]:
-            validity = "valid" if sol["valid"] else "invalid"
+            validity = "VALID" if sol["valid"] else "APPROX"
             sv = ", ".join(f"{float(v):.6f}" for v in sol["singular_values"])
             print(
-                f"  branch {sol['index']} ({validity}): "
-                f"rank={sol['rank']} singular_values=[{sv}]"
+                f"   Solution {sol['index']} [{validity}]: "
+                f"rank={sol['rank']}, "
+                f"pos_err={sol['pos_error']:.4f}, "
+                f"rot_err={sol['rot_error']:.4f}, "
+                f"SV=[{sv}]"
             )
+        print()
 
 
 if __name__ == "__main__":

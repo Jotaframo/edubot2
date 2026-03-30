@@ -6,7 +6,10 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from Forward_Kinematics import jacobian_finite_difference
+try:
+    from python_controllers.Jacobian_FINAL import jacobian_finite_difference_final
+except ModuleNotFoundError:
+    from Jacobian_FINAL import jacobian_finite_difference_final
 
 
 JOINT_NAMES = [
@@ -30,7 +33,7 @@ JOINT_LIMITS = np.array(
 )
 
 # Hardware home position from robot_hw.yaml
-HOME_Q = [0.0, 0.63, -1.2217, -1.0472]
+HOME_Q = [0.0, 0.23, -1.2217, -1.0472]
 
 
 class ConstantVelocityUpward(Node):
@@ -41,13 +44,13 @@ class ConstantVelocityUpward(Node):
         self.declare_parameter("joint_state_topic", "/joint_states")
         self.declare_parameter("use_joint_state_feedback", True)
         self.declare_parameter("rate_hz", 20.0)
-        self.declare_parameter("duration_s", 10.0)
-        self.declare_parameter("ee_velocity_xyz", [0.0, 0.0, 0.05])  # Move upward only
+        self.declare_parameter("duration_s", 30.0)
+        self.declare_parameter("ee_velocity_xyz", [0.00, 0.0, 0.02])  # Move upward only
         self.declare_parameter("q_start", HOME_Q)
-        self.declare_parameter("damping_lambda", 0.1)  # Higher damping for stability
-        self.declare_parameter("min_sigma", 0.01)      # Lower threshold for singularity
+        self.declare_parameter("min_sigma", 0.01)      # Singularity threshold (pseudoinverse guard)
         self.declare_parameter("max_joint_velocity", 0.3)
         self.declare_parameter("return_home", True)
+        self.declare_parameter("home_tolerance", 0.05)  # Tolerance for reaching home (rad)
 
         topic = self.get_parameter("topic").value
         joint_state_topic = self.get_parameter("joint_state_topic").value
@@ -61,10 +64,10 @@ class ConstantVelocityUpward(Node):
             self.get_parameter("ee_velocity_xyz").value, dtype=float
         )
         self.q_seed = np.asarray(self.get_parameter("q_start").value, dtype=float)
-        self.damping_lambda = float(self.get_parameter("damping_lambda").value)
         self.min_sigma = float(self.get_parameter("min_sigma").value)
         self.max_joint_velocity = float(self.get_parameter("max_joint_velocity").value)
         self.return_home = bool(self.get_parameter("return_home").value)
+        self.home_tolerance = float(self.get_parameter("home_tolerance").value)
 
         if self.ee_velocity.shape != (3,):
             raise ValueError("ee_velocity_xyz must contain exactly 3 values")
@@ -73,6 +76,8 @@ class ConstantVelocityUpward(Node):
 
         self.current_q = self.q_seed.copy()
         self.start_time = None
+        self.returning_home = False
+        self.home_return_start = None
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.state_sub = self.create_subscription(
@@ -155,11 +160,40 @@ class ConstantVelocityUpward(Node):
         self.get_logger().warn(reason)
 
         if self.return_home:
-            self.get_logger().info("returning to home...")
+            self.get_logger().info("initiating return to home...")
+            self.returning_home = True
+            self.home_return_start = self.get_clock().now()
             self.traj_pub.publish(self._build_pos_msg(HOME_Q, move_time=4.0))
+        else:
+            self.get_logger().info("execution complete, not returning to home")
+            raise KeyboardInterrupt()
 
     def _tick(self):
-        if self.done:
+        if self.done and not self.returning_home:
+            return
+
+        # Handle return-to-home sequence
+        if self.returning_home:
+            if self.home_return_start is None:
+                return
+            
+            elapsed = (self.get_clock().now() - self.home_return_start).nanoseconds * 1e-9
+            q_error = np.linalg.norm(self.current_q - HOME_Q)
+            
+            # Check if home is reached (within tolerance or timeout after 6 seconds)
+            if q_error < self.home_tolerance or elapsed > 6.0:
+                if q_error < self.home_tolerance:
+                    self.get_logger().info(
+                        "successfully returned to home. q_error={:.6f}".format(q_error)
+                    )
+                else:
+                    self.get_logger().warn(
+                        "return-to-home timeout after {:.1f}s, q_error={:.6f}".format(
+                            elapsed, q_error
+                        )
+                    )
+                self.timer.cancel()
+                raise KeyboardInterrupt()
             return
 
         if self.start_time is None:
@@ -171,7 +205,7 @@ class ConstantVelocityUpward(Node):
             return
 
         q = self._effective_q()
-        jac = jacobian_finite_difference(q)
+        jac = jacobian_finite_difference_final(q)
         singular_values = np.linalg.svd(jac, compute_uv=False)
         sigma_min = float(np.min(singular_values))
         rank = int(np.sum(singular_values > self.min_sigma))
@@ -184,9 +218,9 @@ class ConstantVelocityUpward(Node):
             )
             return
 
+        # Moore–Penrose pseudoinverse: J† = J^T (JJ^T)^{-1}
         jj_t = jac @ jac.T
-        damped = jj_t + (self.damping_lambda ** 2) * np.eye(3)
-        qdot = jac.T @ np.linalg.solve(damped, self.ee_velocity)
+        qdot = jac.T @ np.linalg.solve(jj_t, self.ee_velocity)
 
         max_abs_vel = float(np.max(np.abs(qdot)))
         if max_abs_vel > self.max_joint_velocity:

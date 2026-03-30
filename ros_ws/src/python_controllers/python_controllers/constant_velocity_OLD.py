@@ -47,7 +47,6 @@ class ConstantVelocityFollower(Node):
         self.declare_parameter("duration_s", 15.0)
         self.declare_parameter("ee_velocity_xyz", [0.0, 0.0, 0.01])
         self.declare_parameter("q_start", HOME_Q)   # matches sim home
-        self.declare_parameter("damping_lambda", 0.03)
         self.declare_parameter("min_sigma", 0.02)
         self.declare_parameter("max_joint_velocity", 0.25)
         self.declare_parameter("return_home", True)
@@ -64,7 +63,6 @@ class ConstantVelocityFollower(Node):
             self.get_parameter("ee_velocity_xyz").value, dtype=float
         )
         self.q_seed = np.asarray(self.get_parameter("q_start").value, dtype=float)
-        self.damping_lambda = float(self.get_parameter("damping_lambda").value)
         self.min_sigma = float(self.get_parameter("min_sigma").value)
         self.max_joint_velocity = float(self.get_parameter("max_joint_velocity").value)
         self.return_home = bool(self.get_parameter("return_home").value)
@@ -189,9 +187,9 @@ class ConstantVelocityFollower(Node):
             )
             return
 
+        # Moore–Penrose pseudoinverse: J† = J^T (JJ^T)^{-1}
         jj_t = jac @ jac.T
-        damped = jj_t + (self.damping_lambda ** 2) * np.eye(3)
-        qdot = jac.T @ np.linalg.solve(damped, self.ee_velocity)
+        qdot = jac.T @ np.linalg.solve(jj_t, self.ee_velocity)
 
         max_abs_vel = float(np.max(np.abs(qdot)))
         if max_abs_vel > self.max_joint_velocity:
