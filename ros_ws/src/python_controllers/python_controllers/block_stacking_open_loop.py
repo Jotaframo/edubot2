@@ -35,20 +35,22 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
         b_tr = (self.location_b[0], self.location_b[1], b_travel_z)
 
         # The core movement loop
+        # Former straight-line annotations matched the same pattern as the base file:
+        # motion stages were tagged straight_line=True, grasp/release straight_line=False.
         sequence = [
-            Stage("descend_a", xyz=a_pk, gripper=self.gripper_open, move_time=self.descend_move_time_s, straight_line=True),
-            Stage("grasp_a", xyz=a_pk, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, straight_line=False),
-            Stage("lift_a", xyz=a_tr, gripper=self.gripper_closed, move_time=self.lift_move_time_s, straight_line=True),
-            Stage("travel_to_b", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s, straight_line=True),
-            Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s, straight_line=True),
-            Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, straight_line=False),
-            Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s, straight_line=True),
-            Stage("return_to_pick_hover", xyz=a_hov, gripper=self.gripper_open, move_time=self.transfer_move_time_s, straight_line=True),
+            Stage("descend_a", xyz=a_pk, gripper=self.gripper_open, move_time=self.descend_move_time_s),
+            Stage("grasp_a", xyz=a_pk, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
+            Stage("lift_a", xyz=a_tr, gripper=self.gripper_closed, move_time=self.lift_move_time_s),
+            Stage("travel_to_b", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s),
+            Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s),
+            Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
+            Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
+            Stage("return_to_pick_hover", xyz=a_hov, gripper=self.gripper_open, move_time=self.transfer_move_time_s),
         ]
 
         # ONLY add approach_a if this is the very first block and we aren't at a_hov yet
         if self.stack_index == 0:
-            sequence.insert(0, Stage("initial_approach", xyz=a_hov, gripper=self.gripper_open, move_time=self.initial_approach_move_time_s, straight_line=True))
+            sequence.insert(0, Stage("initial_approach", xyz=a_hov, gripper=self.gripper_open, move_time=self.initial_approach_move_time_s))
 
         return sequence
 
