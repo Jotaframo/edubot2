@@ -1,3 +1,12 @@
+"""
+Numerical (finite-difference) Jacobian for the 5-DOF manipulator.
+
+Used for online control because it is faster than the symbolic version
+and only needs the FK function.
+Also contains SVD analysis of assignment poses for report.
+
+"""
+
 import numpy as np
 
 try:
@@ -7,12 +16,7 @@ except ModuleNotFoundError:
 
 
 def fk_xyz_final(q, q5=0.0):
-    """
-    Return end-effector XYZ using the final 5-joint FK chain.
-
-    `q` is the 4-DOF arm state [q1, q2, q3, q4]; q5 defaults to 0.0 because
-    the constant velocity follower does not actively control wrist roll.
-    """
+    """End-effector [x, y, z] for a 4-DOF joint vector q (q5 fixed)."""
     q = np.asarray(q, dtype=float)
     if q.shape != (4,):
         raise ValueError("q must have shape (4,)")
@@ -22,10 +26,7 @@ def fk_xyz_final(q, q5=0.0):
 
 
 def jacobian_finite_difference_final(q, eps=1e-6, q5=0.0):
-    """
-    Compute the 3x4 linear Jacobian numerically via central differences,
-    using the final FK chain for the first four joints and a fixed q5.
-    """
+    """3x4 linear Jacobian via central finite differences."""
     q = np.asarray(q, dtype=float)
     if q.shape != (4,):
         raise ValueError("q must have shape (4,)")
@@ -41,6 +42,7 @@ def jacobian_finite_difference_final(q, eps=1e-6, q5=0.0):
 
 
 def jacobian_svd_and_rank_final(q, eps=1e-6, rank_tol=1e-6, q5=0.0):
+    """Return dict with Jacobian, singular values, and numerical rank."""
     jac = jacobian_finite_difference_final(q, eps=eps, q5=q5)
     singular_values = np.linalg.svd(jac, compute_uv=False)
     rank = int(np.sum(singular_values > rank_tol))
@@ -53,10 +55,7 @@ def jacobian_svd_and_rank_final(q, eps=1e-6, rank_tol=1e-6, q5=0.0):
 
 
 def analyze_assignment_pose_jacobians_final(eps=1e-6, rank_tol=1e-6, q5=0.0):
-    """
-    Evaluate Jacobians at assignment poses using numerical IK.
-    Uses the final FK chain for all computations.
-    """
+    """Evaluate Jacobian SVD at each assignment pose via numerical IK."""
     try:
         from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
     except ModuleNotFoundError:
@@ -137,6 +136,7 @@ def analyze_assignment_pose_jacobians_final(eps=1e-6, rank_tol=1e-6, q5=0.0):
 
 
 def print_assignment_pose_jacobian_analysis_final(eps=1e-6, rank_tol=1e-6, q5=0.0):
+    """print SVD results for all assignment poses."""
     print("Assignment pose Jacobian analysis (FINAL FK chain):\n")
     results = analyze_assignment_pose_jacobians_final(
         eps=eps, rank_tol=rank_tol, q5=q5

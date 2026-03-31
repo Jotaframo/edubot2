@@ -1,3 +1,16 @@
+"""
+ROS 2 velocity controller. tracks a constant end-effector velocity.
+
+At each timestep node:
+  1. reads joint angles from /joint_states
+  2. builds the 3x4 linear Jacobian via finite differences
+  3. checks for singularity (SVD)
+  4. computes joint velocities with the pseudoinverse
+  5. clamps and publishes the velocity command
+
+Usage:  ros2 run python_controllers constant_velocity_upward
+"""
+
 import numpy as np
 import rclpy
 from builtin_interfaces.msg import Duration
@@ -32,11 +45,13 @@ JOINT_LIMITS = np.array(
     dtype=float,
 )
 
-# Hardware home position from robot_hw.yaml
+# Home position (rad)  matching robot_hw.yaml
 HOME_Q = [0.0, 0.23, -1.2217, -1.0472]
 
 
 class ConstantVelocityUpward(Node):
+    """Track a constant EE velocity using J† = J^T (J J^T)^-1."""
+
     def __init__(self):
         super().__init__("constant_velocity_upward")
 
@@ -100,6 +115,7 @@ class ConstantVelocityUpward(Node):
         )
 
     def _on_joint_state(self, msg: JointState):
+        """Callback: update current_q from encoder feedback."""
         if not self.use_joint_state_feedback:
             return
 
@@ -121,6 +137,7 @@ class ConstantVelocityUpward(Node):
             )
 
     def _build_vel_msg(self, qdot):
+        """Pack joint velocities into a JointTrajectory message."""
         msg = JointTrajectory()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.joint_names = ALL_JOINT_NAMES
@@ -152,6 +169,7 @@ class ConstantVelocityUpward(Node):
         return self.current_q.copy()
 
     def _stop(self, reason):
+        """Send zero velocity, optionally return to home, then shut down."""
         if self.done:
             return
         self.done = True
@@ -169,6 +187,7 @@ class ConstantVelocityUpward(Node):
             raise KeyboardInterrupt()
 
     def _tick(self):
+        """Main control loop (called at 20 Hz by timer)."""
         if self.done and not self.returning_home:
             return
 
@@ -218,14 +237,17 @@ class ConstantVelocityUpward(Node):
             )
             return
 
-        # Moore–Penrose pseudoinverse: J† = J^T (JJ^T)^{-1}
+        # Right pseudoinverse: qdot = J^T (J J^T)^-1 * x_dot
+        # Gives minimum-norm joint velocity for the underdetermined 3x4 system
         jj_t = jac @ jac.T
         qdot = jac.T @ np.linalg.solve(jj_t, self.ee_velocity)
 
+        # Clamp joint velocities for safety
         max_abs_vel = float(np.max(np.abs(qdot)))
         if max_abs_vel > self.max_joint_velocity:
             qdot *= self.max_joint_velocity / max_abs_vel
 
+        # Check that the next step stays within URDF joint limits
         q_next = q + qdot * self.dt
         if np.any(q_next < JOINT_LIMITS[:, 0]) or np.any(q_next > JOINT_LIMITS[:, 1]):
             self._stop("aborting on joint limit guard")

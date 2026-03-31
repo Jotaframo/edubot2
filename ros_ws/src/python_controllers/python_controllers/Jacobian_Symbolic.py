@@ -1,27 +1,19 @@
 """
-Symbolic geometric Jacobian for the 5-DOF RRRRR manipulator.
+Symbolic Jacobian for the 5-DOF  manipulator.
 
-Rebuilds the FK chain symbolically (same URDF constants as
-Forward_Kinematics_FINAL.py) and computes the geometric Jacobian
-via the z_i x (p_ee - o_i) / z_i axis-origin method.
-
-Run standalone:  python Jacobian_Symbolic.py
+Rebuilds the FK chain symbolically (matching Forward_Kinematics_FINAL.py)
+and derives the Jacobian:  J_i = [z_i x (p_ee - o_i); z_i].
 """
 
 import numpy as np
 import sympy as sp
 from sympy import Matrix, cos, sin, pi, trigsimp, zeros
 
-# ---------------------------------------------------------------------------
 # Joint symbols
-# ---------------------------------------------------------------------------
+
 q1, q2, q3, q4, q5 = sp.symbols("q1 q2 q3 q4 q5", real=True)
 
-# ---------------------------------------------------------------------------
-# SymPy versions of the same helpers used in Forward_Kinematics_FINAL.py
-#   create_tf_matrix  →  sym_create_tf   (T @ Rz @ Ry @ Rx)
-#   get_joint_rotation →  sym_Rz         (Rz(q))
-# ---------------------------------------------------------------------------
+# SymPy rotation / transform helpers (mirrors Forward_Kinematics_FINAL)
 
 def _Rx(a):
     return Matrix([[1,0,0,0],[0,cos(a),-sin(a),0],[0,sin(a),cos(a),0],[0,0,0,1]])
@@ -42,9 +34,7 @@ def _R(x):
     return sp.nsimplify(x, rational=True, tolerance=1e-6)
 
 
-# ---------------------------------------------------------------------------
-# FK chain — same URDF constants and ordering as Forward_Kinematics_FINAL.py
-# ---------------------------------------------------------------------------
+# FK chain (same URDF constants and ordering as Forward_Kinematics_FINAL.py)
 T_world_base     = sym_create_tf(0, 0, 0, 0, 0, pi)
 T_base_shoulder  = sym_create_tf(_R(0.0), _R(-0.0452), _R(0.0165), 0, 0, 0)
 T_shoulder_upper = sym_create_tf(_R(0.0), _R(-0.0306), _R(0.1025), 0, -pi/2, 0)
@@ -62,16 +52,16 @@ A5 = T_wrist_gripper  * _Rz(q5)
 T_total = T_world_base @ A1 @ A2 @ A3 @ A4 @ A5 @ T_gripper_center
 p_ee = T_total[:3, 3]
 
-# ---------------------------------------------------------------------------
-# Geometric Jacobian:  z_i x (p_ee - o_i) for linear, z_i for angular
-# ---------------------------------------------------------------------------
+#  Jacobian: z_i x (p_ee - o_i) for linear, z_i for angular
 T_fixed = [T_base_shoulder, T_shoulder_upper, T_upper_lower,
            T_lower_wrist,   T_wrist_gripper]
 
+# Cumulative transforms: cum[i] is the world-frame transform up to joint i
 cum = [T_world_base]
 for Ai in [A1, A2, A3, A4, A5]:
-    cum.append(cum[-1] * Ai)          # cum[i] = frame AFTER joint i
+    cum.append(cum[-1] * Ai)
 
+# Each axis_frames[i] gives the frame whose z-column is the rotation axis z_i
 axis_frames = [cum[i] * T_fixed[i] for i in range(5)]
 
 J_geo_linear  = zeros(3, 5)
@@ -82,30 +72,22 @@ for i in range(5):
     J_geo_linear[:, i]  = z_i.cross(p_ee - o_i)
     J_geo_angular[:, i] = z_i
 
-# ---------------------------------------------------------------------------
-# Fast numerical evaluators (lambdify turns symbolic -> numpy functions)
-# ---------------------------------------------------------------------------
+# Fast numerical evaluators via lambdify
 _J_gl_f = sp.lambdify((q1, q2, q3, q4, q5), J_geo_linear,  "numpy")
 _J_ga_f = sp.lambdify((q1, q2, q3, q4, q5), J_geo_angular, "numpy")
 
 
-def jacobian_geometric_numerical(q, q5_val=0.0):
-    """6×4 geometric Jacobian (linear + angular) at q (shape (4,))."""
+def jacobian_numerical(q, q5_val=0.0):
+    """6×4 Jacobian (linear + angular) at q (shape (4,))."""
     q = np.asarray(q, dtype=float)
     Jl = np.array(_J_gl_f(q[0], q[1], q[2], q[3], float(q5_val)), dtype=float)[:, :4]
     Ja = np.array(_J_ga_f(q[0], q[1], q[2], q[3], float(q5_val)), dtype=float)[:, :4]
     return np.vstack([Jl, Ja])
 
 
-# ---------------------------------------------------------------------------
-# Assignment-pose analysis (geometric Jacobian)
-# ---------------------------------------------------------------------------
-def analyze_assignment_poses_geometric(rank_tol=1e-6):
-    """
-    Evaluate the geometric linear Jacobian at all assignment-pose IK solutions
-    and print SVD / rank / condition-number in the same style as
-    Jacobian_FINAL.print_assignment_pose_jacobian_analysis_final().
-    """
+# Assignment-pose analysis
+def analyze_assignment_poses(rank_tol=1e-5):
+    """Print SVD and rank of J_v at every assignment-pose IK solution."""
     try:
         from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
     except ModuleNotFoundError:
@@ -119,7 +101,7 @@ def analyze_assignment_poses_geometric(rank_tol=1e-6):
         ("V",   [0.0, 0.0452, 0.45, -0.785, 0.0, 3.141]),
     ]
 
-    print("Assignment pose Jacobian analysis (GEOMETRIC Jacobian):\n")
+    print("Assignment pose Jacobian analysis (symbolic Jacobian):\n")
     for label, pose in assignment_poses:
         x, y, z, rx, ry, rz = pose
         ik_solutions = ik_coordinate_descent_multi_start(
@@ -137,26 +119,21 @@ def analyze_assignment_poses_geometric(rank_tol=1e-6):
         for idx, sol in enumerate(valid + approx):
             tag = "VALID" if sol["success"] else "APPROX"
             q4 = sol["q_raw"][:4]
-            jac = jacobian_geometric_numerical(q4)[:3, :]   # 3×4 linear part
+            jac = jacobian_numerical(q4)[:3, :]   # 3×4 linear part
             sv = np.linalg.svd(jac, compute_uv=False)
             rank = int(np.sum(sv > rank_tol))
-            kappa = sv[0] / sv[-1] if sv[-1] > 1e-10 else float("inf")
             sv_str = ", ".join(f"{v:.6f}" for v in sv)
             print(
                 f"   Solution {idx} [{tag}]: "
                 f"rank={rank}, "
                 f"pos_err={sol['pos_error']:.4f}, "
                 f"rot_err={sol['rot_error']:.4f}, "
-                f"SV=[{sv_str}], "
-                f"κ={kappa:.1f}"
+                f"SV=[{sv_str}]"
             )
         print()
 
 
-# ---------------------------------------------------------------------------
-# Standalone: print symbolic expressions, verify against Jacobian_FINAL.py,
-#             and run assignment-pose analysis with the geometric Jacobian
-# ---------------------------------------------------------------------------
+# Standalone: symbolic printout, cross-check, assignment-pose analysis
 if __name__ == "__main__":
 
     from Jacobian_FINAL import jacobian_finite_difference_final
@@ -166,21 +143,21 @@ if __name__ == "__main__":
     for i in range(5):
         print(f"  z_{i+1} = {trigsimp(axis_frames[i][:3, 2].subs(q5, 0)).T}")
 
-    # Symbolic geometric linear Jacobian entries (q5=0)
+    # Symbolic linear Jacobian entries (q5=0)
     J4 = J_geo_linear[:, :4].subs(q5, 0)
     coord = "xyz"
-    print("\nGeometric linear Jacobian J_v (3×4, q5=0):")
+    print("\nLinear Jacobian J_v (3×4, q5=0):")
     for r in range(3):
         for c in range(4):
             print(f"  J_v[{coord[r]},q{c+1}] = {trigsimp(J4[r, c])}")
 
-    # Cross-check: geometric symbolic vs finite-difference numerical
+    # Cross-check: symbolic vs finite-difference numerical
     tq = np.array([0.3, -0.5, 0.8, -0.2])
-    Jg = jacobian_geometric_numerical(tq)[:3, :]   # linear part only
+    Jg = jacobian_numerical(tq)[:3, :]   # linear part only
     Jn = jacobian_finite_difference_final(tq)
     print(f"\nTest q = {tq}")
-    print(f"  |Geometric − Finite-diff|_max = {np.max(np.abs(Jg - Jn)):.2e}")
+    print(f"  |Symbolic − Finite-diff|_max = {np.max(np.abs(Jg - Jn)):.2e}")
 
     # Assignment-pose analysis
     print("\n" + "="*70)
-    analyze_assignment_poses_geometric()
+    analyze_assignment_poses()
