@@ -1,6 +1,6 @@
 import numpy as np
 import rclpy
-from python_controllers.pick_place_open_loop import PickPlaceOpenLoop, Stage
+from python_controllers.pick_place_open_loop import PickPlaceOpenLoop, Stage, fk_rpy, fk_xyz
 
 class BlockStackingOpenLoop(PickPlaceOpenLoop):
     def __init__(self):
@@ -15,42 +15,90 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
         self.stage_idx = 0
         self.stage_active = False
         self.done = False
-        
-        # Build the initial sequence
-        self.stages = self._build_stage_sequence()
 
         self.get_logger().info(
             f"Block Stacking initialized: count={self.stack_count}, step={self.stack_height_step}"
         )
 
     def _build_stage_sequence(self):
-        """Builds a sequence that skips 'approach_a' if we are already in the loop."""
-        b_pick_z = self.pick_z_m + self.stack_index * self.stack_height_step
-        b_travel_z = self.travel_z_m + self.stack_index * self.stack_height_step
+        z_offset = self.stack_index * self.stack_height_step
+        b_pick_z = self.pick_z_m + z_offset
+        a_travel_z = self.travel_z_m + z_offset
+        b_travel_z = self.travel_z_m + z_offset
 
         a_hov = (self.location_a[0], self.location_a[1], self.hover_z_m)
         a_pk = (self.location_a[0], self.location_a[1], self.pick_z_m)
-        a_tr = (self.location_a[0], self.location_a[1], self.travel_z_m)
-        b_pk = (self.location_b[0], self.location_b[1], b_pick_z)
-        b_tr = (self.location_b[0], self.location_b[1], b_travel_z)
+        a_tr = (self.location_a[0], self.location_a[1], a_travel_z)
+        sequence = []
 
-        # The core movement loop
-        # Former straight-line annotations matched the same pattern as the base file:
-        # motion stages were tagged straight_line=True, grasp/release straight_line=False.
-        sequence = [
-            Stage("descend_a", xyz=a_pk, gripper=self.gripper_open, move_time=self.descend_move_time_s),
-            Stage("grasp_a", xyz=a_pk, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
-            Stage("lift_a", xyz=a_tr, gripper=self.gripper_closed, move_time=self.lift_move_time_s),
-            Stage("travel_to_b", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s),
-            Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s),
-            Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
-            Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
-            Stage("return_to_pick_hover", xyz=a_hov, gripper=self.gripper_open, move_time=self.transfer_move_time_s),
-        ]
-
-        # ONLY add approach_a if this is the very first block and we aren't at a_hov yet
         if self.stack_index == 0:
-            sequence.insert(0, Stage("initial_approach", xyz=a_hov, gripper=self.gripper_open, move_time=self.initial_approach_move_time_s))
+            initial_approach = Stage(
+                "initial_approach",
+                xyz=a_hov,
+                rpy=self.locked_rpy,
+                gripper=self.gripper_open,
+                move_time=self.initial_approach_move_time_s,
+                optimize_orientation=True,
+            )
+            initial_approach.q_target = self._solve_ik(
+                initial_approach.xyz,
+                initial_approach.rpy,
+                q_init=self.current_q,
+                optimize_orientation=initial_approach.optimize_orientation,
+            )
+            sequence.append(initial_approach)
+            q = initial_approach.q_target.copy()
+        else:
+            q = self.current_q.copy()
+
+        for stage in [
+            Stage("descend_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_open, move_time=self.descend_move_time_s, optimize_orientation=True),
+            Stage("grasp_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
+            Stage("lift_a", xyz=a_tr, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.lift_move_time_s, optimize_orientation=True),
+        ]:
+            stage.q_target = self._solve_ik(
+                stage.xyz,
+                stage.rpy,
+                q_init=q,
+                optimize_orientation=stage.optimize_orientation,
+            )
+            sequence.append(stage)
+            q = stage.q_target
+
+        lift_a_q = sequence[-1].q_target.copy()
+        place_q_ref = lift_a_q.copy()
+        place_q_ref[0] += float(self.tuning.joint1_place_delta_rad)
+        location_b = fk_xyz(place_q_ref)
+        place_rpy = fk_rpy(place_q_ref)
+
+        b_pk = (location_b[0], location_b[1], b_pick_z)
+        b_tr = (location_b[0], location_b[1], b_travel_z)
+
+        for stage in [
+            Stage("travel_to_b", xyz=tuple(location_b.tolist()), rpy=place_rpy, gripper=self.gripper_closed, move_time=self.transfer_move_time_s, q_target=place_q_ref.copy(), optimize_orientation=True),
+            Stage("descend_b", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_closed, move_time=self.descend_move_time_s, optimize_orientation=True),
+            Stage("release_b", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
+            Stage("retreat_from_b", xyz=b_tr, rpy=place_rpy, gripper=self.gripper_open, move_time=self.lift_move_time_s, optimize_orientation=True),
+            Stage("return_to_pick_hover", xyz=a_hov, rpy=self.locked_rpy, gripper=self.gripper_open, move_time=self.transfer_move_time_s, optimize_orientation=True),
+        ]:
+            if stage.q_target is None:
+                stage.q_target = self._solve_ik(
+                    stage.xyz,
+                    stage.rpy,
+                    q_init=q,
+                    optimize_orientation=stage.optimize_orientation,
+                )
+            sequence.append(stage)
+            q = stage.q_target
+
+        self.get_logger().info(
+            f"[stack {self.stack_index + 1}] location_b: {location_b} | place_q_ref: {place_q_ref.round(4)} | place_rpy: {place_rpy}"
+        )
+        for stage in sequence:
+            achieved = fk_xyz(stage.q_target)
+            self.get_logger().info(
+                f"[stack {self.stack_index + 1}] [IK precompute] {stage.name} | target: {np.round(stage.xyz, 4)} | achieved: {np.round(achieved, 4)}"
+            )
 
         return sequence
 

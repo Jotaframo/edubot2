@@ -22,9 +22,6 @@ class Stage:
 class PhysicalPickPlaceTuning:
     # Encoder-tuned robot pose which will define location of the pick
     start_q: tuple[float, float, float, float, float] = (0.822, -0.3283, -0.4218, -1.1919, -1.0446)
-    # If None, lock orientation to the FK orientation of start_q.
-    # This keeps wrist pitch consistent with the calibrated start pose.
-    fixed_world_rpy: tuple[float, float, float] | None = None
     x_offset_m: float = 0.10
 
     # Tuned values to ensure robot is gripping hard enough
@@ -82,10 +79,7 @@ class PickPlaceOpenLoop(Node):
         self.tuning = PHYSICAL_TUNING
 
         self.start_q = np.array(self.tuning.start_q, dtype=float)
-        if self.tuning.fixed_world_rpy is None:
-            self.locked_rpy = fk_rpy(self.start_q)
-        else:
-            self.locked_rpy = self.tuning.fixed_world_rpy
+        self.locked_rpy = fk_rpy(self.start_q)
         
         self.gripper_open = self.tuning.gripper_open
         self.gripper_closed = self.tuning.gripper_closed
@@ -218,7 +212,7 @@ class PickPlaceOpenLoop(Node):
             Stage("rotate_about_joint1", xyz=None, gripper=self.gripper_closed, move_time=self.transfer_move_time_s),
             Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s),
             Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
-            Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
+            Stage("retreat_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
         ]
 
     def _tick(self):
@@ -258,10 +252,10 @@ class PickPlaceOpenLoop(Node):
                 stage_target_xyz = stage.xyz
 
                 lock_joint1 = None
-                if stage.name in {"descend_b", "release_b", "lift_from_b"}:
+                if stage.name in {"descend_b", "release_b", "retreat_from_b"}:
                     lock_joint1 = self.stage_start_q[0]
 
-                if stage.name in {"release_b", "lift_from_b"}:
+                if stage.name in {"release_b", "retreat_from_b"}:
                     current_xyz = self.stage_start_xyz
                     stage_target_xyz = (
                         float(current_xyz[0]),
@@ -284,7 +278,7 @@ class PickPlaceOpenLoop(Node):
         s_alpha = alpha**2 * (3 - 2*alpha) # Smoothstep
 
         q_cmd = self.stage_start_q + (self.stage_target_q - self.stage_start_q) * s_alpha
-        if stage.name == "lift_from_b" and self.stage_target_xyz is not None:
+        if stage.name == "retreat_from_b" and self.stage_target_xyz is not None:
             z_cmd = float(self.stage_start_xyz[2] + (self.stage_target_xyz[2] - self.stage_start_xyz[2]) * s_alpha)
             xyz_cmd = (
                 float(self.stage_start_xyz[0]),

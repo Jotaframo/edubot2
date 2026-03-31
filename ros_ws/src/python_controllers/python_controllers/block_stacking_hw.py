@@ -43,7 +43,7 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
             Stage("rotate_about_joint1", xyz=b_tr, gripper=self.gripper_closed, move_time=self.transfer_move_time_s),
             Stage("descend_b", xyz=b_pk, gripper=self.gripper_closed, move_time=self.descend_move_time_s),
             Stage("release_b", xyz=b_pk, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s),
-            Stage("lift_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
+            Stage("retreat_from_b", xyz=b_tr, gripper=self.gripper_open, move_time=self.lift_move_time_s),
             Stage("return_to_pick_hover", xyz=a_hov, gripper=self.gripper_open, move_time=self.transfer_move_time_s),
         ]
 

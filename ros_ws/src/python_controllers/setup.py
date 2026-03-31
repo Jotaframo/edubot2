@@ -27,6 +27,7 @@ setup(
             'constant_velocity_upward = python_controllers.constant_velocity_upward:main',
             'constant_velocity_follower = python_controllers.constant_velocity_follower:main',
             'pick_place_open_loop = python_controllers.pick_place_open_loop:main',
+            'pick_place_roundtrip = python_controllers.pick_place_roundtrip:main',
             'pick_place_hw = python_controllers.pick_place_hw:main',
             'position_trajectory_follower = python_controllers.Position_Trajectory_Final:main',
             'pick_place_ez = python_controllers.pick_and_place_ez:main',
