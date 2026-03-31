@@ -100,7 +100,7 @@ def fk_rpy(q) -> tuple[float, float, float]:
 
     return roll, pitch, yaw
 
-class PickPlaceOpenLoop(Node):
+class PickPlaceOneWay(Node):
     def __init__(self):
         super().__init__("pick_place_world_locked")
 

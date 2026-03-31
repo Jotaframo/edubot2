@@ -1,8 +1,8 @@
 import numpy as np
 import rclpy
-from python_controllers.pick_place_open_loop import PickPlaceOpenLoop, Stage, fk_rpy, fk_xyz
+from python_controllers.pick_place_oneway import PickPlaceOneWay, Stage, fk_rpy, fk_xyz
 
-class BlockStackingOpenLoop(PickPlaceOpenLoop):
+class BlockStackingOpenLoop(PickPlaceOneWay):
     def __init__(self):
         super().__init__()
         self.declare_parameter("stack_count", 3)
