@@ -8,7 +8,7 @@ try:
     )
 except ImportError:
     try:
-        from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import (
+        from python_controllers.t01_Forward_Kinematics_FINAL import (
             forward_kinematics_full,
             create_tf_matrix,
         )

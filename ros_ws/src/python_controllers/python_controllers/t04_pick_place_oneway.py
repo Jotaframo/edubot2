@@ -7,8 +7,12 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
-from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+try:
+    from python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+    from python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+except ModuleNotFoundError:
+    from t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+    from t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 @dataclass
 class Stage:
@@ -314,7 +318,7 @@ class PickPlaceOneWay(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PickPlaceOpenLoop()
+    node = PickPlaceOneWay()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

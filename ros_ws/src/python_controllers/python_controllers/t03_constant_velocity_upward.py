@@ -18,11 +18,15 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point
 
 try:
-    from ros_ws.src.python_controllers.python_controllers.t03_Jacobian_FINAL import jacobian_finite_difference_final
+    from python_controllers.t03_Jacobian_FINAL import jacobian_finite_difference_final
+    from python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 except ModuleNotFoundError:
-    from ros_ws.src.python_controllers.python_controllers.t03_Jacobian_FINAL import jacobian_finite_difference_final
+    from t03_Jacobian_FINAL import jacobian_finite_difference_final
+    from t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 
 JOINT_NAMES = [
@@ -99,7 +103,11 @@ class ConstantVelocityUpward(Node):
             JointState, joint_state_topic, self._on_joint_state, qos
         )
         self.traj_pub = self.create_publisher(JointTrajectory, topic, 10)
+        self.marker_pub = self.create_publisher(Marker, 'end_effector_trace', 10)
         self.done = False
+
+        self._max_trace_points = 5000
+        self._init_trace_marker()
 
         self.timer = self.create_timer(self.dt, self._tick)
         self.get_logger().info(
@@ -168,8 +176,37 @@ class ConstantVelocityUpward(Node):
     def _effective_q(self):
         return self.current_q.copy()
 
+    def _init_trace_marker(self):
+        """Initialize the trace marker for RViz visualization"""
+        self._trace_marker = Marker()
+        self._trace_marker.header.frame_id = "world"
+        self._trace_marker.ns = "velocity_trace"
+        self._trace_marker.id = 0
+        self._trace_marker.type = Marker.LINE_STRIP
+        self._trace_marker.action = Marker.ADD
+        self._trace_marker.scale.x = 0.005
+        self._trace_marker.color.r = 1.0
+        self._trace_marker.color.g = 0.0
+        self._trace_marker.color.b = 1.0
+        self._trace_marker.color.a = 1.0
+        self._trace_marker.pose.orientation.w = 1.0
+
+    def _publish_trace_point(self, x, y, z, stamp):
+        """Add a point to the end-effector trace and publish"""
+        point = Point()
+        point.x = float(x)
+        point.y = float(y)
+        point.z = float(z)
+
+        self._trace_marker.points.append(point)
+        if len(self._trace_marker.points) > self._max_trace_points:
+            self._trace_marker.points = self._trace_marker.points[-self._max_trace_points:]
+
+        self._trace_marker.header.stamp = stamp.to_msg()
+        self.marker_pub.publish(self._trace_marker)
+
     def _stop(self, reason):
-        """Send zero velocity, optionally return to home, then shut down."""
+        """Send zero velocity, optionally return to home, then shut down"""
         if self.done:
             return
         self.done = True
@@ -257,6 +294,11 @@ class ConstantVelocityUpward(Node):
             self.current_q = q_next
 
         self.traj_pub.publish(self._build_vel_msg(qdot))
+
+        # Publish end-effector trace
+        fk = forward_kinematics_full(q[0], q[1], q[2], q[3], 0.0)
+        ee_x, ee_y, ee_z = fk[0, 3], fk[1, 3], fk[2, 3]
+        self._publish_trace_point(ee_x, ee_y, ee_z, self.get_clock().now())
 
 
 def main(args=None):

@@ -1,6 +1,9 @@
 import numpy as np
 import rclpy
-from ros_ws.src.python_controllers.python_controllers.t04_pick_place_oneway import PickPlaceOneWay, Stage, fk_rpy, fk_xyz
+try:
+    from python_controllers.t04_pick_place_oneway import PickPlaceOneWay, Stage, fk_rpy, fk_xyz
+except ModuleNotFoundError:
+    from t04_pick_place_oneway import PickPlaceOneWay, Stage, fk_rpy, fk_xyz
 
 class BlockStackingOpenLoop(PickPlaceOneWay):
     def __init__(self):
