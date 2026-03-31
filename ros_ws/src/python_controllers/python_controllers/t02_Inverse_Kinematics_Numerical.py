@@ -13,7 +13,7 @@ except ImportError:
             create_tf_matrix,
         )
     except ImportError:
-        from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full, create_tf_matrix
+        from t01_Forward_Kinematics_FINAL import forward_kinematics_full, create_tf_matrix
 
 
 BOUNDS_MIN = np.array([-2.0000, -1.5700, -1.5800, -1.5700, -3.1415], dtype=float)

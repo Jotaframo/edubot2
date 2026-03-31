@@ -3,8 +3,12 @@ import numpy as np
 import cv2
 import numpy as np
 from rclpy.node import Node
-from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent
-from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+try:
+    from python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent
+    from python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+except ModuleNotFoundError:
+    from t02_Inverse_Kinematics_Numerical import ik_coordinate_descent
+    from t01_Forward_Kinematics_FINAL import forward_kinematics_full
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
@@ -12,10 +16,10 @@ from geometry_msgs.msg import Point
 
 class SilhouetteTraj(Node):
 
-    def __init__(self, image_path='TU_Delft_Logo.png'):
+    def __init__(self, image_path='TU_Delft_Logo.png', plane='horizontal'):
         super().__init__('silhouette_trajectory')
 
-        # Initial safe home position for a 5-DOF arm
+        # Safe home pose for the 5-DOF arm
         self._HOME = np.array([
             np.deg2rad(0), np.deg2rad(0),
             np.deg2rad(0), np.deg2rad(0),
@@ -24,18 +28,19 @@ class SilhouetteTraj(Node):
 
         self._last_q = self._HOME.copy()
         self._beginning = self.get_clock().now()
+        self._plane = plane.lower()  # 'horizontal', 'xz', or 'yz'
         
-        # Increased cycle time since the perimeter of a complex shape is longer
+        # Longer cycle for complex silhouettes
         self._cycle_time = 20.0 
         self._last_cycle_t = None
 
-        # --- Image Processing & Waypoint Generation ---
+        # Image processing and waypoint generation
         self._waypoints = []
         self._cumulative_distances = []
         self._total_perimeter = 0.0
         self._load_and_scale_silhouette(image_path)
 
-        # --- Publishers ---
+        # Publishers
         self._publisher = self.create_publisher(JointTrajectory, 'joint_cmds', 10)
         self._marker_pub = self.create_publisher(Marker, 'end_effector_trace', 10)
         self._marker_pub_compat = self.create_publisher(Marker, 'fk_ee', 10)
@@ -52,16 +57,15 @@ class SilhouetteTraj(Node):
         """Extracts the contour from the image and maps it to the robot's workspace."""
 
 
-        ###GETTING THE CONTOUR POINTS OF THE IMAGE###
-        # 1. Read the image in grayscale
+        # Read the image in grayscale with OpenCV
         img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
             self.get_logger().error(f"Could not load image at {image_path} :(")
             return
-        # 2. Threshold the image (Assuming black silhouette on white background)
+        # Threshold for a black shape on white background
         _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
 
-        # 3. Find contours and grab the largest one
+        # Find contours and keep the largest one
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) 
         if not contours:
             self.get_logger().error("No contours found in the image.")
@@ -70,21 +74,19 @@ class SilhouetteTraj(Node):
 
         
         main_contour = max(contours, key=cv2.contourArea).squeeze()
-        # 4. Normalize the contour to a 0.0 to 1.0 scale
+        # Normalize contour coordinates to [0, 1]
         x_coords = main_contour[:, 0]
         y_coords = main_contour[:, 1]
         
         x_min_img, x_max_img = x_coords.min(), x_coords.max()
         y_min_img, y_max_img = y_coords.min(), y_coords.max()
 
-
-        ###SCALING THE SILOUHETTE COORDINATES TO FIT IN THE VERIFIES SQUARE WORKSPACE###
-
-        # Invert Y so the image doesn't draw upside down (image origin is top-left, world origin is bottom-left)
+        ###SCALE AND MAP TO WORKSPACE###
+        # Invert y because base and world origins are opposite
         norm_x = (x_coords - x_min_img) / (x_max_img - x_min_img)
         norm_y = 1.0 - ((y_coords - y_min_img) / (y_max_img - y_min_img))
 
-        # 5. Scale to the robot's safe workspace (20cm x 20cm box)
+        # Scale to a safe 20 cm by 20 cm workspace
         workspace_l = 0.20
         workspace_x_min = -0.10
         workspace_y_min = 0.20
@@ -93,13 +95,13 @@ class SilhouetteTraj(Node):
 
         self._waypoints = np.column_stack((scaled_x, scaled_y))
 
-        # 6. Calculate cumulative distances for smooth time-based interpolation
+        # Build cumulative arc length for smooth timing
         self._cumulative_distances = [0.0]
         for i in range(1, len(self._waypoints)):
             dist = np.linalg.norm(self._waypoints[i] - self._waypoints[i-1])
             self._cumulative_distances.append(self._cumulative_distances[-1] + dist)
         
-        # Close the loop (distance from last point back to first point)
+        # Close the loop back to the first waypoint
         dist = np.linalg.norm(self._waypoints[0] - self._waypoints[-1])
         self._cumulative_distances.append(self._cumulative_distances[-1] + dist)
         self._waypoints = np.vstack((self._waypoints, self._waypoints[0]))
@@ -113,27 +115,34 @@ class SilhouetteTraj(Node):
         fraction = t / self._cycle_time
         target_dist = fraction * self._total_perimeter
 
-        # Find the segment we are currently on
+        # Find the current segment
         idx = np.searchsorted(self._cumulative_distances, target_dist) - 1
         
-        # Protect against edge cases at exact loop rollover
+        # Guard edge cases at loop rollover
         if idx < 0: idx = 0
         if idx >= len(self._waypoints) - 1: idx = len(self._waypoints) - 2
 
-        # Linear interpolation between the two waypoints of the current segment
+        # Linearly interpolate within the segment
         p1 = self._waypoints[idx]
         p2 = self._waypoints[idx + 1]
         
         segment_length = self._cumulative_distances[idx + 1] - self._cumulative_distances[idx]
         if segment_length == 0:
-            x, y = p1
+            a, b = p1
         else:
             segment_fraction = (target_dist - self._cumulative_distances[idx]) / segment_length
-            x = p1[0] + segment_fraction * (p2[0] - p1[0])
-            y = p1[1] + segment_fraction * (p2[1] - p1[1])
+            a = p1[0] + segment_fraction * (p2[0] - p1[0])
+            b = p1[1] + segment_fraction * (p2[1] - p1[1])
 
-        z = 0.10  # Raised slightly to safely clear the table
-        roll, pitch, yaw = 0.0, 0.0, 0.0  # Fixed downward orientation
+        # Map to chosen plane
+        if self._plane == 'xz':
+            x, y, z = a, 0.20, b  # Vertical XZ plane at y=0.20
+        elif self._plane == 'yz':
+            x, y, z = -0.10, a, b  # Vertical YZ plane at x=-0.10
+        else:  # horizontal
+            x, y, z = a, b, 0.10  # Horizontal XY plane at z=0.10
+
+        roll, pitch, yaw = 0.0, 0.0, 0.0  # Keep orientation fixed
 
         return x, y, z, roll, pitch, yaw
     
@@ -182,7 +191,7 @@ class SilhouetteTraj(Node):
         self._marker_pub_compat.publish(self._trace_marker)
 
     def timer_callback(self):
-        # Safety check to ensure image loaded correctly
+        # Skip update if no waypoints were loaded
         if len(self._waypoints) == 0:
             return
 
@@ -190,6 +199,7 @@ class SilhouetteTraj(Node):
         msg = JointTrajectory()
         msg.header.stamp = now.to_msg()
 
+        # elapsed time since start in seconds for trajectory phase
         dt = (now - self._beginning).nanoseconds * (1e-9)
         cycle_t = dt % self._cycle_time
         if self._last_cycle_t is not None and cycle_t < self._last_cycle_t:
@@ -234,10 +244,10 @@ class SilhouetteTraj(Node):
 
 class RectangleTraj(Node):
 
-    def __init__(self):
+    def __init__(self, plane='horizontal'):
         super().__init__('rectangle_trajectory')
 
-        # Initial safe home position for a 5-DOF arm
+        # Defining home pose for the 5-DOF arm
         self._HOME = np.array([
             np.deg2rad(0), np.deg2rad(0),
             np.deg2rad(0), np.deg2rad(0),
@@ -246,18 +256,19 @@ class RectangleTraj(Node):
 
         self._last_q = self._HOME.copy()
         self._beginning = self.get_clock().now()
+        self._plane = plane.lower()  # 'horizontal', 'xz', or 'yz'
         self._cycle_time = 20.0
         self._last_cycle_t = None
 
         self._publisher = self.create_publisher(JointTrajectory, 'joint_cmds', 10)
 
-        self._marker_pub = self.create_publisher(Marker, 'end_effector_trace', 10)
+        self._marker_pub = self.create_publisher(Marker, 'end_effector_trace', 10) # Marker topic for the 'pen'
         self._marker_pub_compat = self.create_publisher(Marker, 'fk_ee', 10)
         self._init_trace_marker()
         self._max_trace_points = 3000
 
 
-        timer_period = 0.2  # 25 Hz
+        timer_period = 0.02  # 25 Hz
         self._timer = self.create_timer(timer_period, self.timer_callback)
         
         self.get_logger().info("Starting Horizontal Rectangle Trajectory...")
@@ -266,36 +277,44 @@ class RectangleTraj(Node):
         t = dt % self._cycle_time
         fraction = t / self._cycle_time
 
-        # FIX 1 & 2: Moved into safe workspace and aligned dimensions with perimeter math
-        # X delta is exactly 0.10, Y delta is exactly 0.20
+        # Rectangle dimensions
         l=0.20
-        x_min= -0.10
-        x_max = x_min + l  # 10 cm forward from the center  
-        y_min= 0.20
-        y_max = y_min + l  # 20 cm wide rectangle centered on the Y-axis 
-        z = 0.1  # Raised slightly to safely clear the table
-        
-        roll, pitch, yaw = 0.0, 0.0, 0.0  # Fixed orientation facing downwards 
-
         perimeter = 0.60
         d = fraction * perimeter  
 
+        # Map edges to plane coords (a, b)
         if d < l/2: 
-            # Edge 1: Bottom (Moving forward in X)
-            x = x_min + (d / (l/2)) * (x_max - x_min) #divide by l/2 because this edge is travelled from half the length of the rectangle
-            y = y_min
+            # First edge
+            a = (d / (l/2)) * l
+            b = 0.0
         elif d < l/2 + l: 
-            # Edge 2: Right (Moving left in Y)
-            x = x_max
-            y = y_min + ((d - l/2) / l) * (y_max - y_min)
+            # Second edge
+            a = l
+            b = ((d - l/2) / l) * l
         elif d < l/2 + l + l/2: 
-            # Edge 3: Top (Moving backward in X)
-            x = x_max - ((d - l/2 - l) / (l/2)) * (x_max - x_min) #divide by l/2 because the other half of this edge is already drawn in the first edge
-            y = y_max
+            # Third edge
+            a = l - ((d - l/2 - l) / (l/2)) * l
+            b = l
         else: 
-            # Edge 4: Left (Moving right in Y)
-            x = x_min
-            y = y_max - ((d - (l/2 + l + l/2)) / l) * (y_max - y_min)
+            # Fourth edge
+            a = 0.0
+            b = l - ((d - (l/2 + l + l/2)) / l) * l
+
+        # Map to chosen plane and offset
+        if self._plane == 'xz':
+            x = -0.10 + a  # Horizontal range in X
+            y = 0.20  # Fixed Y
+            z = 0.10 + b  # Vertical range in Z
+        elif self._plane == 'yz':
+            x = -0.10  # Fixed X
+            y = 0.20 + a  # Horizontal range in Y
+            z = 0.10 + b  # Vertical range in Z
+        else:  # horizontal
+            x = -0.10 + a  # Horizontal range in X
+            y = 0.20 + b  # Horizontal range in Y
+            z = 0.1  # Fixed Z
+        
+        roll, pitch, yaw = 0.0, 0.0, 0.0  # Keep orientation fixed
 
         return x, y, z, roll, pitch, yaw
     
@@ -308,10 +327,10 @@ class RectangleTraj(Node):
         self._trace_marker.type = Marker.LINE_STRIP
         self._trace_marker.action = Marker.ADD
         
-        # Line width
+        # Trace line width
         self._trace_marker.scale.x = 0.005 
         
-        # Bright neon green color (R, G, B, Alpha)
+        # Bright green trace color
         self._trace_marker.color.r = 0.0
         self._trace_marker.color.g = 1.0
         self._trace_marker.color.b = 0.0
@@ -361,8 +380,7 @@ class RectangleTraj(Node):
         
         target_x, target_y, target_z, r, p, y = self.get_rectangle_pose(dt)
         
-        # FIX 3: Added optimize_orientation=False for the 5-DOF arm
-        # Bumped max_iters slightly to ensure the first frame solves cleanly
+        # Solve IK with fixed orientation for this 5-DOF arm
         ik_result = ik_coordinate_descent(
             target_x, target_y, target_z, r, p, y,
             q_init=self._last_q,
@@ -403,13 +421,16 @@ class RectangleTraj(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    solution_trajrectangle_traj = RectangleTraj()
-    tudelft_sil= SilhouetteTraj()
-    solution_traj = solution_trajrectangle_traj
+    # Choose plane: 'horizontal', 'xz', or 'yz'
+    plane = 'xz'
+    solution_trajrectangle_traj = RectangleTraj(plane=plane)
+    tudelft_sil= SilhouetteTraj(plane=plane) 
+    # Select which trajectory to run
+    solution_traj = tudelft_sil
 
     
     try:
-        #rclpy.spin(rectangle_traj)
+        # Spin only the selected trajectory node
         rclpy.spin(solution_traj)
     except KeyboardInterrupt:
         pass

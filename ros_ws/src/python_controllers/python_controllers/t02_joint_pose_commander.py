@@ -4,7 +4,7 @@ from builtin_interfaces.msg import Duration
 
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-
+# IK poses we want to replay in order
 POSES = [
     ("I", [-0.9205, 0.6447, -0.8765, 0.2326, 1.5708]),
     ("II", [-1.3034, -0.1819, 0.4459, 1.3068, -0.2666]),
@@ -19,10 +19,12 @@ class JointTableCommander(Node):
     def __init__(self):
         super().__init__("joint_table_commander")
 
+        # Runtime settings
         self.declare_parameter("topic", "/joint_cmds")
         self.declare_parameter("hold_s", 2.5)
         self.declare_parameter("loop", False)
         self.declare_parameter("mode", "hardware")
+        # Gripper values are different in sim and hardware
         self.declare_parameter("gripper_hardware", 0.12)
         self.declare_parameter("gripper_simulation", 0.5)
         self.declare_parameter("point_time_s", 0.25)
@@ -37,20 +39,25 @@ class JointTableCommander(Node):
         self.point_time_s = float(self.get_parameter("point_time_s").value)
         self.wait_for_subscriber = bool(self.get_parameter("wait_for_subscriber").value)
 
+        # Fallback to hardware if mode input is unexpected
         if self.mode not in {"hardware", "simulation", "sim"}:
             self.get_logger().warn(
                 f"Unknown mode '{self.mode}', defaulting to hardware"
             )
             self.mode = "hardware"
 
+        # Pick the right gripper command for current mode
         if self.mode in {"simulation", "sim"}:
             self.gripper = self.gripper_simulation
         else:
             self.gripper = self.gripper_hardware
 
+        # Publish joint trajectories on the configured topic
         self.pub = self.create_publisher(JointTrajectory, self.topic, 10)
+        # Timer drives the pose sequence
         self.timer = self.create_timer(0.05, self._tick)
 
+        # Keep track of which pose we are currently holding
         self.pose_index = 0
         self.pose_start = self.get_clock().now()
 
@@ -60,6 +67,7 @@ class JointTableCommander(Node):
         )
 
     def _publish_pose(self, joint_positions):
+        # One message with one trajectory point
         msg = JointTrajectory()
         msg.header.stamp = self.get_clock().now().to_msg()
 
@@ -80,6 +88,7 @@ class JointTableCommander(Node):
         self.pub.publish(msg)
 
     def _tick(self):
+        #Ensure we do not publish into the void
         if self.wait_for_subscriber and self.pub.get_subscription_count() == 0:
             self.get_logger().warn(
                 f"Waiting for subscriber on {self.topic}...",
@@ -99,6 +108,7 @@ class JointTableCommander(Node):
         pose_name, pose_joints = POSES[self.pose_index]
         self._publish_pose(pose_joints)
 
+        # Move to next pose after hold time expires
         elapsed = (self.get_clock().now() - self.pose_start).nanoseconds * 1e-9
         if elapsed >= self.hold_s:
             self.get_logger().info(f"Pose {pose_name} done")
