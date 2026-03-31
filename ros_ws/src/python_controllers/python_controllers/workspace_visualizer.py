@@ -3,7 +3,7 @@ from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
 import numpy as np
-from Forward_Kinematics import forward_kinematics, print_forward_kinematics
+from Forward_Kinematics_FINAL import forward_kinematics_full
 
 # ─── Joint limits ────────────────────────────────────────────────────────────
 LIMITS_UNCONSTRAINED = {
@@ -39,7 +39,7 @@ def get_point_cloud(limits, step):
     q4 = np.arange(*limits['q4'], step)
 
     Q1, Q2, Q3, Q4 = np.meshgrid(q1, q2, q3, q4, indexing='ij')
-    return forward_kinematics(Q1.ravel(), Q2.ravel(), Q3.ravel(), Q4.ravel(), batch_mode=True)
+    return forward_kinematics_full(Q1.ravel(), Q2.ravel(), Q3.ravel(), Q4.ravel(), batch_mode=True)
 
 def boundary_by_spherical_binning(points_xyz: np.ndarray,
                                   n_az: int,
@@ -137,5 +137,4 @@ def main():
     rclpy.shutdown()
 
 if __name__ == '__main__':
-    print_forward_kinematics()
     main()
