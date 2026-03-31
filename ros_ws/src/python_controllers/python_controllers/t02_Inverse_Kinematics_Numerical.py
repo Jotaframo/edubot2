@@ -2,18 +2,18 @@ import numpy as np
 from scipy.optimize import least_squares
 
 try:
-    from .Forward_Kinematics_FINAL import (
+    from .t01_Forward_Kinematics_FINAL import (
         forward_kinematics_full,
         create_tf_matrix,
     )
 except ImportError:
     try:
-        from python_controllers.Forward_Kinematics_FINAL import (
+        from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import (
             forward_kinematics_full,
             create_tf_matrix,
         )
     except ImportError:
-        from Forward_Kinematics_FINAL import forward_kinematics_full, create_tf_matrix
+        from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full, create_tf_matrix
 
 
 BOUNDS_MIN = np.array([-2.0000, -1.5700, -1.5800, -1.5700, -3.1415], dtype=float)

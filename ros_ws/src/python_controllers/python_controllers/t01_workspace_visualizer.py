@@ -3,7 +3,7 @@ from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
 import numpy as np
-from Forward_Kinematics_FINAL import forward_kinematics_full
+from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 # ─── Joint limits ────────────────────────────────────────────────────────────
 LIMITS_UNCONSTRAINED = {

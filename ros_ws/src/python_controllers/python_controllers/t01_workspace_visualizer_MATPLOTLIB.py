@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from Forward_Kinematics_FINAL import forward_kinematics_full
+from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 # --- Workspace Generation ---
 

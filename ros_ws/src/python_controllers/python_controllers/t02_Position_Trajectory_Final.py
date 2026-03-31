@@ -3,8 +3,8 @@ import numpy as np
 import cv2
 import numpy as np
 from rclpy.node import Node
-from Inverse_Kinematics_Numerical import ik_coordinate_descent
-from Forward_Kinematics_FINAL import forward_kinematics_full
+from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent
+from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point

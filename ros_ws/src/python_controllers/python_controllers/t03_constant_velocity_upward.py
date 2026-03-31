@@ -20,9 +20,9 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 try:
-    from python_controllers.Jacobian_FINAL import jacobian_finite_difference_final
+    from ros_ws.src.python_controllers.python_controllers.t03_Jacobian_FINAL import jacobian_finite_difference_final
 except ModuleNotFoundError:
-    from Jacobian_FINAL import jacobian_finite_difference_final
+    from ros_ws.src.python_controllers.python_controllers.t03_Jacobian_FINAL import jacobian_finite_difference_final
 
 
 JOINT_NAMES = [

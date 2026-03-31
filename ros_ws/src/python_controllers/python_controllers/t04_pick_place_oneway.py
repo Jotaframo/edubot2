@@ -7,8 +7,8 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
-from python_controllers.Forward_Kinematics_FINAL import forward_kinematics_full
+from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 @dataclass
 class Stage:

@@ -89,9 +89,9 @@ def jacobian_numerical(q, q5_val=0.0):
 def analyze_assignment_poses(rank_tol=1e-5):
     """Print SVD and rank of J_v at every assignment-pose IK solution."""
     try:
-        from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+        from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
     except ModuleNotFoundError:
-        from Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+        from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
 
     assignment_poses = [
         ("I",   [0.2, 0.2, 0.2, 0.0, 1.57, 0.65]),
@@ -136,7 +136,7 @@ def analyze_assignment_poses(rank_tol=1e-5):
 # Standalone: symbolic printout, cross-check, assignment-pose analysis
 if __name__ == "__main__":
 
-    from Jacobian_FINAL import jacobian_finite_difference_final
+    from ros_ws.src.python_controllers.python_controllers.t03_Jacobian_FINAL import jacobian_finite_difference_final
 
     # Joint axes in world frame
     print("Joint rotation axes (world frame, q5=0):")

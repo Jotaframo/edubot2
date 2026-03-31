@@ -1,7 +1,7 @@
 import numpy as np
 import rclpy
 
-from python_controllers.pick_place_oneway import PickPlaceOneWay, Stage, fk_rpy, fk_xyz
+from ros_ws.src.python_controllers.python_controllers.t04_pick_place_oneway import PickPlaceOneWay, Stage, fk_rpy, fk_xyz
 
 
 class PickPlaceRoundTrip(PickPlaceOneWay):

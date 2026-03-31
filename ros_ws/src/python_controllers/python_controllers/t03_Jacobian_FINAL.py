@@ -10,9 +10,9 @@ Also contains SVD analysis of assignment poses for report.
 import numpy as np
 
 try:
-    from python_controllers.Forward_Kinematics_FINAL import forward_kinematics_full
+    from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 except ModuleNotFoundError:
-    from Forward_Kinematics_FINAL import forward_kinematics_full
+    from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 
 def fk_xyz_final(q, q5=0.0):
@@ -57,9 +57,9 @@ def jacobian_svd_and_rank_final(q, eps=1e-6, rank_tol=1e-6, q5=0.0):
 def analyze_assignment_pose_jacobians_final(eps=1e-6, rank_tol=1e-6, q5=0.0):
     """Evaluate Jacobian SVD at each assignment pose via numerical IK."""
     try:
-        from python_controllers.Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+        from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
     except ModuleNotFoundError:
-        from Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
+        from ros_ws.src.python_controllers.python_controllers.t02_Inverse_Kinematics_Numerical import ik_coordinate_descent_multi_start
 
     # Assignment poses from AE4324: [x, y, z, rot_x, rot_y, rot_z]
     assignment_poses = [
