@@ -49,7 +49,8 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
             sequence.append(initial_approach)
             q = initial_approach.q_target.copy()
         else:
-            q = self.current_q.copy()
+            q_source = self.current_q if self.current_q is not None else self.start_q
+            q = np.array(q_source, dtype=float).copy()
 
         for stage in [
             Stage("descend_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_open, move_time=self.descend_move_time_s, optimize_orientation=True),
@@ -108,6 +109,8 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
         return sequence
 
     def _tick(self):
+        if not self.motion_ready:
+            return
         if self.done:
             return
 
