@@ -53,8 +53,8 @@ class PhysicalPickPlaceTuning:
 """
 class PhysicalPickPlaceTuning:
     # Encoder-tuned robot pose which will define location of the pick
-    start_q: tuple[float, float, float, float, float] = (0.82, 0.63, -1.2217, -1.0472, 0.0)
-    joint1_place_delta_rad: float = -1.0
+    start_q: tuple[float, float, float, float, float] = (0.9, 0.6, -1.195, -1.1198, 1.615)
+    joint1_place_delta_rad: float = -1.5
 
     # Tuned values to ensure robot is gripping hard enough
     gripper_open: float = 0.5
@@ -216,12 +216,15 @@ class PickPlaceOpenLoop(Node):
             Stage("grasp_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
             Stage("lift_a", xyz=a_tr, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.lift_move_time_s, optimize_orientation=True),
         ]:
-            stage.q_target = self._solve_ik(
-                stage.xyz,
-                stage.rpy,
-                q_init=q,
-                optimize_orientation=stage.optimize_orientation,
-            )
+            if stage.name == "grasp_a":
+                stage.q_target = q.copy()
+            else:
+                stage.q_target = self._solve_ik(
+                    stage.xyz,
+                    stage.rpy,
+                    q_init=q,
+                    optimize_orientation=stage.optimize_orientation,
+                )
             stages.append(stage)
             q = stage.q_target
 
@@ -241,7 +244,9 @@ class PickPlaceOpenLoop(Node):
             Stage("release_b", xyz=b_pk, rpy=self.place_rpy, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
             Stage("retreat_from_b", xyz=b_tr, rpy=self.place_rpy, gripper=self.gripper_open, move_time=self.lift_move_time_s, optimize_orientation=True),
         ]:
-            if stage.q_target is None:
+            if stage.name == "release_b":
+                stage.q_target = q.copy()
+            elif stage.q_target is None:
                 stage.q_target = self._solve_ik(
                     stage.xyz,
                     stage.rpy,

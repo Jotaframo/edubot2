@@ -56,12 +56,15 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
             Stage("grasp_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
             Stage("lift_a", xyz=a_tr, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.lift_move_time_s, optimize_orientation=True),
         ]:
-            stage.q_target = self._solve_ik(
-                stage.xyz,
-                stage.rpy,
-                q_init=q,
-                optimize_orientation=stage.optimize_orientation,
-            )
+            if stage.name == "grasp_a":
+                stage.q_target = q.copy()
+            else:
+                stage.q_target = self._solve_ik(
+                    stage.xyz,
+                    stage.rpy,
+                    q_init=q,
+                    optimize_orientation=stage.optimize_orientation,
+                )
             sequence.append(stage)
             q = stage.q_target
 
@@ -81,7 +84,9 @@ class BlockStackingOpenLoop(PickPlaceOpenLoop):
             Stage("retreat_from_b", xyz=b_tr, rpy=place_rpy, gripper=self.gripper_open, move_time=self.lift_move_time_s, optimize_orientation=True),
             Stage("return_to_pick_hover", xyz=a_hov, rpy=self.locked_rpy, gripper=self.gripper_open, move_time=self.transfer_move_time_s, optimize_orientation=True),
         ]:
-            if stage.q_target is None:
+            if stage.name == "release_b":
+                stage.q_target = q.copy()
+            elif stage.q_target is None:
                 stage.q_target = self._solve_ik(
                     stage.xyz,
                     stage.rpy,
