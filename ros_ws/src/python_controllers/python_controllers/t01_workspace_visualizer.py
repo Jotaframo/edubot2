@@ -1,9 +1,13 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
 import numpy as np
-from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+try:
+    from python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+except ModuleNotFoundError:
+    from t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 # ─── Joint limits ────────────────────────────────────────────────────────────
 LIMITS_UNCONSTRAINED = {
@@ -23,23 +27,42 @@ LIMITS_CONSTRAINED = {
 }
 
 STEP = 0.05  # radians between samples in joint space
+MIN_SAMPLES = 8000
+MAX_SAMPLES = 30000
 
-# ─── Boundary extraction (spherical bins) ─────────────────────────────────────
+#Boundary extraction 
 N_AZ = 240   # azimuth bins  (0..2pi)
 N_EL = 120   # elevation bins(-pi/2..pi/2)
-ORIGIN = np.array([0.0, 0.0, 0.0])  # bin directions around this point (world frame)
-
-# ─── Workspace sampling ──────────────────────────────────────────────────────
+ORIGIN = np.array([0.0, 0.0, 0.0]) # world center of the robot
 
 def get_point_cloud(limits, step):
-    """Generates the meshgrid and computes all FK positions."""
-    q1 = np.arange(*limits['q1'], step)
-    q2 = np.arange(*limits['q2'], step)
-    q3 = np.arange(*limits['q3'], step)
-    q4 = np.arange(*limits['q4'], step)
+    """
+    Computes FK position cloud.
 
-    Q1, Q2, Q3, Q4 = np.meshgrid(q1, q2, q3, q4, indexing='ij')
-    return forward_kinematics_full(Q1.ravel(), Q2.ravel(), Q3.ravel(), Q4.ravel(), batch_mode=True)
+    Parameters:
+    - limits: dict of joint limits, e.g. {'q1': (-2,2), 'q2': (-1.57,1.57), ...}
+    - step: radians between samples in joint space
+    Returns: 
+    - (N,3) array of XYZ points in the workspace
+    
+    """
+
+
+    bins = [max(1, int((high - low) / step)) for (low, high) in limits.values()]
+    est_grid_points = int(np.prod(bins, dtype=np.int64))
+    num_samples = int(np.clip(est_grid_points // 2000, MIN_SAMPLES, MAX_SAMPLES))
+
+    points = np.zeros((num_samples, 3), dtype=np.float64)
+    for i in range(num_samples):
+        q1 = np.random.uniform(*limits['q1'])
+        q2 = np.random.uniform(*limits['q2'])
+        q3 = np.random.uniform(*limits['q3'])
+        q4 = np.random.uniform(*limits['q4'])
+        q5 = np.random.uniform(*limits['q5'])
+        tf = forward_kinematics_full(q1, q2, q3, q4, q5)
+        points[i] = tf[:3, 3]
+
+    return points
 
 def boundary_by_spherical_binning(points_xyz: np.ndarray,
                                   n_az: int,
@@ -48,7 +71,17 @@ def boundary_by_spherical_binning(points_xyz: np.ndarray,
     """
     Divide the sphere (directions from origin) into bins and keep only the farthest
     point in each (azimuth,elevation) bin.
+
+    Parameters:
+    - points_xyz: (N,3) array of points in 3D space
+    - n_az: number of azimuth bins (0..2pi)
+    - n_el: number of elevation bins (-pi/2..pi/2)
+    - origin: the point from which to compute directions
+    Returns:
+    - (M,3) array of points that are the farthest in their spherical range
     """
+
+
     if points_xyz.size == 0:
         return points_xyz
 
@@ -83,10 +116,23 @@ def boundary_by_spherical_binning(points_xyz: np.ndarray,
     sel = best_i[best_i >= 0]
     return points_xyz[sel]
 
-# ─── ROS 2 Visualization Logic ───────────────────────────────────────────────
+#ROS 2 Visualization
 
 def create_marker(xyz, marker_id, color, stamp, ns, size):
-    """Creates a ROS Marker message for a point cloud."""
+    """
+    Creates a ROS Marker message for a point cloud.
+
+    Parameters:
+    - xyz: (N,3) array of XYZ points
+    - marker_id: int, unique ID for the marker
+    - color: (r,g,b,a) tuple with values in [0,1]
+    - stamp: ROS time for the marker header
+    - ns: string, namespace for the marker
+    - size: float, scale for the marker points
+
+    Returns:
+    - Marker message with the given points and properties
+    """
     m = Marker()
     m.header.frame_id, m.header.stamp = "world", stamp
     m.ns, m.id, m.type, m.action = ns, marker_id, Marker.POINTS, Marker.ADD
@@ -98,10 +144,15 @@ def create_marker(xyz, marker_id, color, stamp, ns, size):
         m.points.append(p)
     return m
 
+# ROS2 Node definition for workspace visualization
 class WorkspaceVisualizer(Node):
     def __init__(self):
         super().__init__('workspace_visualizer')
-        self.pub = self.create_publisher(MarkerArray, 'workspace_points', 10)
+        qos = QoSProfile(depth=1)
+        qos.reliability = ReliabilityPolicy.RELIABLE
+        qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.pub = self.create_publisher(MarkerArray, 'workspace_points', qos)
+        self.pub_rviz = self.create_publisher(MarkerArray, '/visualization_marker_array', qos)
 
         self.get_logger().info("Computing clouds (full)...")
         pts_full = get_point_cloud(LIMITS_UNCONSTRAINED, STEP)
@@ -116,6 +167,7 @@ class WorkspaceVisualizer(Node):
         self.get_logger().info(f"Constrained boundary: {len(self.pts_lim)} points.")
 
         self.timer = self.create_timer(1.0, self.publish)
+        self.get_logger().info("Publishing markers on '/workspace_points' and '/visualization_marker_array' (frame='world').")
         self.get_logger().info("Done.")
 
     def publish(self):
@@ -125,6 +177,7 @@ class WorkspaceVisualizer(Node):
         ma.markers.append(create_marker(self.pts_full, 0, (1.0, 0.2, 0.2, 0.35), now, "full_boundary", 0.006))
         ma.markers.append(create_marker(self.pts_lim,  1, (0.2, 1.0, 0.4, 0.90), now, "lim_boundary",  0.007))
         self.pub.publish(ma)
+        self.pub_rviz.publish(ma)
 
 def main():
     rclpy.init()

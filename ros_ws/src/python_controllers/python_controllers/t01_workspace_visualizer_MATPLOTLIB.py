@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from ros_ws.src.python_controllers.python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
-
-# --- Workspace Generation ---
+try:
+    from python_controllers.t01_Forward_Kinematics_FINAL import forward_kinematics_full
+except ModuleNotFoundError:
+    from t01_Forward_Kinematics_FINAL import forward_kinematics_full
 
 LIMITS_CONSTRAINED = {
     'q1': (-2.0,  2.0),
@@ -12,10 +13,10 @@ LIMITS_CONSTRAINED = {
     'q5': (-1.58, 1.58) 
 }
 
-num_samples = 20000  # Increased slightly for better density definition
+num_samples = 20000 
 points = np.zeros((num_samples, 3))
 
-print(f"Generating {num_samples} constrained points. This may take a few seconds...")
+print(f"Generating {num_samples} constrained points...")
 
 for i in range(num_samples):
     q1 = np.random.uniform(*LIMITS_CONSTRAINED['q1'])
@@ -24,10 +25,8 @@ for i in range(num_samples):
     q4 = np.random.uniform(*LIMITS_CONSTRAINED['q4'])
     q5 = np.random.uniform(*LIMITS_CONSTRAINED['q5'])
     
-    pos = forward_kinematics_full(q1, q2, q3, q4, q5)
-    points[i] = pos
-
-# --- Plotting ---
+    tf = forward_kinematics_full(q1, q2, q3, q4, q5)
+    points[i] = tf[:3, 3]
 fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 
