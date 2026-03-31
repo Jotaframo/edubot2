@@ -232,6 +232,8 @@ class PickPlaceOpenLoop(Node):
             if stage.name == "rotate_about_joint1":
                 self.stage_target_q = self.stage_start_q.copy()
                 self.stage_target_q[0] = self.place_joint1_angle
+            elif stage.name == "grasp_a":
+                self.stage_target_q = self.stage_start_q.copy()
             elif stage.name == "release_b":
                 self.stage_target_q = self.stage_start_q.copy()
                 self.stage_target_xyz = stage.xyz
