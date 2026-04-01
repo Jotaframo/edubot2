@@ -69,10 +69,9 @@ class SilhouetteTraj(Node):
         if not contours:
             self.get_logger().error("No contours found in the image.")
             return
-        
-
-        
         main_contour = max(contours, key=cv2.contourArea).squeeze()
+
+
         # Normalize contour coordinates to [0, 1]
         x_coords = main_contour[:, 0]
         y_coords = main_contour[:, 1]
@@ -92,9 +91,8 @@ class SilhouetteTraj(Node):
         scaled_x = workspace_x_min + (norm_x * workspace_l) 
         scaled_y = workspace_y_min + (norm_y * workspace_l)
 
-        self._waypoints = np.column_stack((scaled_x, scaled_y))
-
         # Build cumulative arc length for smooth timing
+        self._waypoints = np.column_stack((scaled_x, scaled_y))
         self._cumulative_distances = [0.0]
         for i in range(1, len(self._waypoints)):
             dist = np.linalg.norm(self._waypoints[i] - self._waypoints[i-1])
@@ -105,7 +103,7 @@ class SilhouetteTraj(Node):
         self._cumulative_distances.append(self._cumulative_distances[-1] + dist)
         self._waypoints = np.vstack((self._waypoints, self._waypoints[0]))
         
-        self._total_perimeter = self._cumulative_distances[-1]
+        self._total_perimeter = self._cumulative_distances[-1]# Total closed-path length, to map cycle time to traveled distance
         self.get_logger().info(f"Loaded silhouette with {len(self._waypoints)} waypoints.")
 
     def get_silhouette_pose(self, dt):
@@ -114,17 +112,17 @@ class SilhouetteTraj(Node):
         fraction = t / self._cycle_time
         target_dist = fraction * self._total_perimeter
 
-        # Find the current segment
+        # Find which path segment contains the current traveled distance
         idx = np.searchsorted(self._cumulative_distances, target_dist) - 1
         
         # Guard edge cases at loop rollover
         if idx < 0: idx = 0
-        if idx >= len(self._waypoints) - 1: idx = len(self._waypoints) - 2
+        if idx >= len(self._waypoints) - 1: 
+            idx = len(self._waypoints) - 2
 
-        # Linearly interpolate within the segment
+        # Linearly interpolate the position between the two waypoints of the current segment
         p1 = self._waypoints[idx]
         p2 = self._waypoints[idx + 1]
-        
         segment_length = self._cumulative_distances[idx + 1] - self._cumulative_distances[idx]
         if segment_length == 0:
             a, b = p1
@@ -408,7 +406,8 @@ class RectangleTraj(Node):
         msg.points = [point]
         self._publisher.publish(msg)
         fk = forward_kinematics_full(*self._last_q)
-        ee_x, ee_y, ee_z = self._world_to_base_coords(fk[0, 3], fk[1, 3], fk[2, 3])
+        ee_x, ee_y, ee_z = self._world_to_base_coords(fk[0, 3], fk[1, 3], fk[2, 3])# Take end-effector position from FK and convert it from world frame to base frame for plotting/publishing.
+
         self._publish_trace_point(ee_x, ee_y, ee_z, now)
 
 
