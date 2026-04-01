@@ -28,7 +28,7 @@ class SilhouetteTraj(Node):
 
         self._last_q = self._HOME.copy()
         self._beginning = self.get_clock().now()
-        self._plane = plane.lower()  # 'horizontal', 'xz', or 'yz'
+        self._plane = plane.lower()  # 'xy', 'xz'
         
         # Longer cycle for complex silhouettes
         self._cycle_time = 20.0 
@@ -134,10 +134,8 @@ class SilhouetteTraj(Node):
             b = p1[1] + segment_fraction * (p2[1] - p1[1])
 
         # Map to chosen plane
-        if self._plane == 'xz':
+        if self._plane == 'xz': # Vertical
             x, y, z = a, 0.20, b  # Vertical XZ plane at y=0.20
-        elif self._plane == 'yz':
-            x, y, z = -0.10, a, b  # Vertical YZ plane at x=-0.10
         else:  # horizontal
             x, y, z = a, b, 0.10  # Horizontal XY plane at z=0.10
 
