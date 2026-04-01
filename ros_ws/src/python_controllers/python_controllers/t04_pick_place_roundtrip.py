@@ -9,16 +9,42 @@ except ModuleNotFoundError:
 
 class PickPlaceRoundTrip(PickPlaceOneWay):
     def __init__(self):
+        """
+        Initialize the round-trip pick-and-place controller.
+
+        Parameters:
+        - none
+        Returns:
+        - none
+        """
         super().__init__()
         self.home_q = None
 
     def _post_joint_state_init(self):
+        """
+        Store the measured start state as the home configuration.
+
+        Parameters:
+        - none
+        Returns:
+        - none
+        """
         self.home_q = self.current_q.copy()
 
     def _precompute_stage_targets(self, stages, q_init):
+        """
+        Fill in missing IK targets for a stage list starting from a seed state.
+
+        Parameters:
+        - stages: list of Stage objects to complete
+        - q_init: initial joint seed for the first stage
+        Returns:
+        - list of Stage objects with populated q_target values
+        """
         q = np.array(q_init, dtype=float).copy()
         for stage in stages:
             if stage.q_target is None:
+                # march the IK seed forward so each stage starts from somthing close
                 stage.q_target = self._solve_ik(
                     stage.xyz,
                     stage.rpy,
@@ -33,6 +59,19 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
         return stages
 
     def _build_leg(self, pick_xy, pick_rpy, place_delta_q1, place_pick_z, prefix, include_initial_approach):
+        """
+        Build one pick-to-place leg of the round-trip motion.
+
+        Parameters:
+        - pick_xy: pick-side planar position
+        - pick_rpy: pick-side end-effector orientation
+        - place_delta_q1: joint-1 offset used to define the place side
+        - place_pick_z: pick/place surface height for this leg
+        - prefix: name prefix for the stages in this leg
+        - include_initial_approach: whether to prepend a hover approach stage
+        Returns:
+        - list of Stage objects for the requested leg
+        """
         a_hov = (pick_xy[0], pick_xy[1], self.hover_z_m)
         a_pk = (pick_xy[0], pick_xy[1], self.pick_z_m)
         a_tr = (pick_xy[0], pick_xy[1], self.travel_z_m)
@@ -60,9 +99,10 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
 
         for stage in [
             Stage(f"{prefix}_descend_pick", xyz=a_pk, rpy=pick_rpy, gripper=self.gripper_open, move_time=self.descend_move_time_s, optimize_orientation=True),
-            Stage(f"{prefix}_grasp", xyz=a_pk, rpy=pick_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
+            Stage(f"{prefix}_grasp", xyz=a_pk, rpy=pick_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, optimize_orientation=True),
             Stage(f"{prefix}_lift_pick", xyz=a_tr, rpy=pick_rpy, gripper=self.gripper_closed, move_time=self.lift_move_time_s, optimize_orientation=True),
         ]:
+            # here we precompute the whole leg up front so execution later stays very simpel
             stage.q_target = self._solve_ik(
                 stage.xyz,
                 stage.rpy,
@@ -73,6 +113,7 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
             q_seed = stage.q_target.copy()
 
         place_q_ref = q_seed.copy()
+        # define the place side by rotating only joint 1 from the picked pose
         place_q_ref[0] += float(place_delta_q1)
         place_xy = fk_xyz(place_q_ref)
         place_rpy = fk_rpy(place_q_ref)
@@ -87,7 +128,7 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
             [
                 Stage(f"{prefix}_travel_to_place", xyz=tuple(place_xy.tolist()), rpy=place_rpy, gripper=self.gripper_closed, move_time=self.transfer_move_time_s, q_target=place_q_ref.copy(), optimize_orientation=True),
                 Stage(f"{prefix}_descend_place", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_closed, move_time=self.descend_move_time_s, optimize_orientation=True),
-                Stage(f"{prefix}_release", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
+                Stage(f"{prefix}_release", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_open, move_time=self.grip_move_time_s, optimize_orientation=True),
                 Stage(f"{prefix}_lift_place", xyz=b_tr, rpy=place_rpy, gripper=self.gripper_open, move_time=self.lift_move_time_s, optimize_orientation=True),
             ]
         )
@@ -95,9 +136,20 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
         return self._precompute_stage_targets(stages, stages[0].q_target if stages else q_seed)
 
     def _build_stage_sequence(self):
+        """
+        Build the full forward-and-return stage sequence. By concatenating a forward leg and a reverse leg, and 
+        split up by a return to the home position we can achieve a round-trip pick-and-place motion that returns 
+        to the starting configuration.
+
+        Parameters:
+        - none
+        Returns:
+        - concatenated list of Stage objects for the round trip
+        """
         pick_xy = self.location_a
         pick_rpy = self.locked_rpy
 
+        # forward leg does the actual pick and place from A to B
         forward_stages = self._build_leg(
             pick_xy=pick_xy,
             pick_rpy=pick_rpy,
@@ -108,6 +160,7 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
         )
 
         place_q_after_forward = forward_stages[-1].q_target.copy()
+        # save a home target so the reverse leg starts from a known pose again
         home_stage = Stage(
             "go_home",
             xyz=tuple(fk_xyz(self.home_q).tolist()),
@@ -121,6 +174,7 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
         reverse_pick_xy = fk_xyz(place_q_after_forward)
         reverse_pick_rpy = fk_rpy(place_q_after_forward)
 
+        # force the builder to start from home before planning the way back
         self.current_q = self.home_q.copy()
         reverse_stages = self._build_leg(
             pick_xy=reverse_pick_xy,
@@ -142,6 +196,7 @@ class PickPlaceRoundTrip(PickPlaceOneWay):
         )
 
         self.current_q = self.home_q.copy()
+        # stitch both legs together with explicit home moves inbetween as requiered by the assignment
         return forward_stages + [home_stage] + reverse_stages + [final_home_stage]
 
 

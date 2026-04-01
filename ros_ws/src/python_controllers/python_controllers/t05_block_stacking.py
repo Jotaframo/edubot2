@@ -7,6 +7,14 @@ except ModuleNotFoundError:
 
 class BlockStackingOpenLoop(PickPlaceOneWay):
     def __init__(self):
+        """
+        Initialize the block-stacking controller.
+
+        Parameters:
+        - none
+        Returns:
+        - none
+        """
         super().__init__()
         self.declare_parameter("stack_count", 3)
         self.declare_parameter("stack_height_step", 0.025)
@@ -24,7 +32,16 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
         )
 
     def _build_stage_sequence(self):
+        """
+        Build the stage sequence for the current stacking cycle.
+
+        Parameters:
+        - none
+        Returns:
+        - list of Stage objects for the active stack level
+        """
         z_offset = self.stack_index * self.stack_height_step
+        # each cycle lifts the place height a bit more to build the stack
         b_pick_z = self.pick_z_m + z_offset
         a_travel_z = self.travel_z_m + z_offset
         b_travel_z = self.travel_z_m + z_offset
@@ -35,6 +52,7 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
         sequence = []
 
         if self.stack_index == 0:
+            # only the first cycle needs to travel from the measured start pose into the task
             initial_approach = Stage(
                 "initial_approach",
                 xyz=a_hov,
@@ -52,15 +70,17 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
             sequence.append(initial_approach)
             q = initial_approach.q_target.copy()
         else:
+            # after the first cycle we keep going from where the arm alredy is
             q_source = self.current_q if self.current_q is not None else self.start_q
             q = np.array(q_source, dtype=float).copy()
 
         for stage in [
             Stage("descend_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_open, move_time=self.descend_move_time_s, optimize_orientation=True),
-            Stage("grasp_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
+            Stage("grasp_a", xyz=a_pk, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.grip_move_time_s, optimize_orientation=True),
             Stage("lift_a", xyz=a_tr, rpy=self.locked_rpy, gripper=self.gripper_closed, move_time=self.lift_move_time_s, optimize_orientation=True),
         ]:
             if stage.name == "grasp_a":
+                # grasp keeps the same arm pose and only changes the gripper state
                 stage.q_target = q.copy()
             else:
                 stage.q_target = self._solve_ik(
@@ -74,6 +94,7 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
 
         lift_a_q = sequence[-1].q_target.copy()
         place_q_ref = lift_a_q.copy()
+        # like in oneway, the place side is made by rotating joint 1 from the lifted pose
         place_q_ref[0] += float(self.tuning.joint1_place_delta_rad)
         location_b = fk_xyz(place_q_ref)
         place_rpy = fk_rpy(place_q_ref)
@@ -84,11 +105,12 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
         for stage in [
             Stage("travel_to_b", xyz=tuple(location_b.tolist()), rpy=place_rpy, gripper=self.gripper_closed, move_time=self.transfer_move_time_s, q_target=place_q_ref.copy(), optimize_orientation=True),
             Stage("descend_b", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_closed, move_time=self.descend_move_time_s, optimize_orientation=True),
-            Stage("release_b", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_open, move_time=self.grip_move_time_s, hold_s=self.grip_hold_s, optimize_orientation=True),
+            Stage("release_b", xyz=b_pk, rpy=place_rpy, gripper=self.gripper_open, move_time=self.grip_move_time_s, optimize_orientation=True),
             Stage("retreat_from_b", xyz=b_tr, rpy=place_rpy, gripper=self.gripper_open, move_time=self.lift_move_time_s, optimize_orientation=True),
             Stage("return_to_pick_hover", xyz=a_hov, rpy=self.locked_rpy, gripper=self.gripper_open, move_time=self.transfer_move_time_s, optimize_orientation=True),
         ]:
             if stage.name == "release_b":
+                # same idea as grasp_a, opening the gripper should not move the arm
                 stage.q_target = q.copy()
             elif stage.q_target is None:
                 stage.q_target = self._solve_ik(
@@ -107,11 +129,19 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
             achieved = fk_xyz(stage.q_target)
             self.get_logger().info(
                 f"[stack {self.stack_index + 1}] [IK precompute] {stage.name} | target: {np.round(stage.xyz, 4)} | achieved: {np.round(achieved, 4)}"
-            )
+        )
 
         return sequence
 
     def _tick(self):
+        """
+        Advance the current stacking cycle and start the next cycle when needed.
+
+        Parameters:
+        - none
+        Returns:
+        - none
+        """
         if not self.motion_ready:
             return
         if self.done:
@@ -125,15 +155,16 @@ class BlockStackingOpenLoop(PickPlaceOneWay):
                 self.get_logger().info("All stacking cycles complete.")
                 return
 
-            # CRITICAL CHANGE: We no longer reset current_q to home_q.
-            # We stay exactly where we ended the last stage (a_hov).
+            # start a fresh stage list for the next block level
             self.stage_idx = 0
             self.stage_active = False
             self.stages = self._build_stage_sequence()
             
+            # this log helps show we are looping over cycles not just stages
             self.get_logger().info(f"Starting cycle {self.stack_index + 1}/{self.stack_count}")
             return
 
+        # otherwise reuse the normal one-way stage executor
         super()._tick()
 
 def main():
