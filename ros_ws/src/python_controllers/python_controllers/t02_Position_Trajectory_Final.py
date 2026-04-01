@@ -62,8 +62,7 @@ class SilhouetteTraj(Node):
         if img is None:
             self.get_logger().error(f"Could not load image at {image_path} :(")
             return
-        # Threshold for a black shape on white background
-        _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
+        _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV) # Threshold for a black shape on white background
 
         # Find contours and keep the largest one
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) 
@@ -81,7 +80,7 @@ class SilhouetteTraj(Node):
         x_min_img, x_max_img = x_coords.min(), x_coords.max()
         y_min_img, y_max_img = y_coords.min(), y_coords.max()
 
-        ###SCALE AND MAP TO WORKSPACE###
+        ###SCALE AND MAP SHAPE COORDINATES###
         # Invert y because base and world origins are opposite
         norm_x = (x_coords - x_min_img) / (x_max_img - x_min_img)
         norm_y = 1.0 - ((y_coords - y_min_img) / (y_max_img - y_min_img))
@@ -142,7 +141,7 @@ class SilhouetteTraj(Node):
         else:  # horizontal
             x, y, z = a, b, 0.10  # Horizontal XY plane at z=0.10
 
-        roll, pitch, yaw = 0.0, 0.0, 0.0  # Keep orientation fixed
+        roll, pitch, yaw = 0.0, 0.0, 0.0  # Initial Orientation
 
         return x, y, z, roll, pitch, yaw
     
@@ -430,7 +429,6 @@ def main(args=None):
 
     
     try:
-        # Spin only the selected trajectory node
         rclpy.spin(solution_traj)
     except KeyboardInterrupt:
         pass
