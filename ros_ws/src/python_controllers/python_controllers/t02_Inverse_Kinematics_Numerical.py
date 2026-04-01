@@ -35,13 +35,20 @@ def calculate_scalar_error(T_current, T_target):
     return total_error
 
 
-def _residual_vector(
-    q_active,
-    target_frame,
-    q_seed=None,
-    regularization_parameter=None,
-    optimize_orientation=True,
-):
+def _residual_vector(q_active,target_frame,q_seed=None,regularization_parameter=None,optimize_orientation=True):
+    """
+    Compute the residual vector for least-squares optimization, combining position and optionally orientation errors, with optional regularization
+    
+    Parameters:
+    - q_active: Current joint angles
+    - target_frame: Target transformation matrix
+    - q_seed: Seed joint angles for regularization
+    - regularization_parameter: Weight for the regularization term
+    - optimize_orientation: Whether to optimize orientation
+    Returns:
+    - residual: error vector for optimization
+    
+    """
     fk = forward_kinematics_full(q_active[0], q_active[1], q_active[2], q_active[3], q_active[4])
 
 
@@ -61,6 +68,20 @@ def _residual_vector(
 
 # Building a structured dictionary from relevant results
 def _build_result(q, target_frame, iterations, pos_tol, rot_tol, scipy_result=None):
+    """
+    Build a structured result dictionary from optimization result
+    
+    Parameters:
+    - q: final joint angles
+    - target_frame: target transformation matrix
+    - iterations: number of iterations performed
+    - pos_tol: position tolerance
+    - rot_tol: rotation tolerance
+    - scipy_result: result from scipy optimization
+    
+    Returns:
+    - result: Structured result dictionary
+    """
     q = np.clip(np.asarray(q, dtype=float), BOUNDS_MIN, BOUNDS_MAX) #Ensure there is no rotation outside of bounds
     fk = forward_kinematics_full(*q) 
     pos_error, rot_error, total_error = calculate_errors(fk, target_frame)
@@ -86,21 +107,25 @@ def _build_result(q, target_frame, iterations, pos_tol, rot_tol, scipy_result=No
     return result
 
 
-def ik_coordinate_descent(
-    x,
-    y,
-    z,
-    rot_x,
-    rot_y,
-    rot_z,
-    q_init=None,
-    max_iters=5000,
-    tolerance=3e-3,
-    pos_tol=5e-3,
-    rot_tol=np.deg2rad(1.0),
-    regularization_parameter=None,
-    optimize_orientation=True,
-):
+def ik_coordinate_descent(x,y,z,rot_x,rot_y,rot_z,
+    q_init=None,max_iters=5000,tolerance=3e-3,pos_tol=5e-3,rot_tol=np.deg2rad(1.0),regularization_parameter=None,optimize_orientation=True):
+    """
+    Perform inverse kinematics using least-squares optimization with optional regularization and orientation optimization
+    
+    Parameters:
+    - x, y, z: target position
+    - rot_x, rot_y, rot_z: target orientation in radians
+    - q_init: initial joint angles for optimization
+    - max_iters: maximum number of iterations for optimization
+    - tolerance: convergence tolerance for optimization
+    - pos_tol: position error tolerance for success
+    - rot_tol: rotation error tolerance for success
+    - regularization_parameter: weight for regularization term (if None, no regularization)
+    - optimize_orientation: whether to include orientation in optimization
+
+    Returns:
+    - result: structured dictionary with optimization results and success status"""
+
     target_frame = create_tf_matrix(x, y, z, rot_x, rot_y, rot_z)
     q0 = np.zeros(5, dtype=float) if q_init is None else np.asarray(q_init, dtype=float)
     q0 = np.clip(q0, BOUNDS_MIN, BOUNDS_MAX)
@@ -134,6 +159,17 @@ def ik_coordinate_descent(
 
 
 def generate_initial_guesses(num_random=5, seed=42, q_prev=None):
+    """
+    Generate a list of initial joint angle guesses 
+    
+    Parameters:
+    - num_random: number of random initial guesses to generate
+    - seed: random seed for reproducibility
+    - q_prev: previous joint angles (if available)
+
+    Returns:
+    - guesses: list of initial joint angle guesses
+    """
     rng = np.random.default_rng(seed)
     guesses = []
 
@@ -155,25 +191,31 @@ def generate_initial_guesses(num_random=5, seed=42, q_prev=None):
     return guesses
 
 
-def ik_coordinate_descent_multi_start(
-    x,
-    y,
-    z,
-    rot_x,
-    rot_y,
-    rot_z,
-    initial_guesses=None,
-    q_prev=None,
-    max_iters=5000,
-    tolerance=3e-3,
-    pos_tol=5e-3,
-    rot_tol=np.deg2rad(1.0),
-    unique_decimals=3,
-    num_random=5,
-    seed=42,
-    regularization_parameter=None,
-    optimize_orientation=True,
-):
+def ik_coordinate_descent_multi_start(x,y,z,rot_x,rot_y,rot_z,
+    initial_guesses=None,q_prev=None,max_iters=5000,tolerance=3e-3,pos_tol=5e-3,rot_tol=np.deg2rad(1.0),unique_decimals=3,
+    num_random=5,seed=42,regularization_parameter=None,optimize_orientation=True):
+    """
+    Perform multi-start inverse kinematics using least-squares optimization to find multiple solutions
+
+    Parameters:
+    - x, y, z: target position
+    - rot_x, rot_y, rot_z: target orientation in radians
+    - initial_guesses: list of initial joint angle guesses (if None, will generate using generate_initial_guesses)
+    - q_prev: previous joint angles for generating initial guesses (if available)
+    - max_iters: maximum number of iterations for optimization
+    - tolerance: convergence tolerance for optimization
+    - pos_tol: position error tolerance for success
+    - rot_tol: rotation error tolerance for success
+    - unique_decimals: number of decimals to round joint angles for uniqueness check
+    - num_random: number of random initial guesses to generate if initial_guesses is None
+    - seed: random seed for reproducibility when generating initial guesses
+    - regularization_parameter: weight for regularization term (if None, no regularization)
+    - optimize_orientation: whether to include orientation in optimization
+
+    Returns:
+    - results: list of structured result dictionaries for each unique solution found
+    """
+
     if initial_guesses is None:
         initial_guesses = generate_initial_guesses(
             num_random=num_random, seed=seed, q_prev=q_prev
@@ -224,10 +266,10 @@ if __name__ == "__main__":
 
     print("Running least-squares numerical IK...\n")
     for name, pose in poses.items():
-        # Use multi-start approach with 15 random initial guesses to find multiple solutions
+        # Use multi-start approach with 20 random initial guesses to find multiple solutions
         res_list = ik_coordinate_descent_multi_start(
             *pose,
-            num_random=15,
+            num_random=20,
             seed=42,
             unique_decimals=3
         )
